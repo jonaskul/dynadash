@@ -245,15 +245,33 @@ done
 pct exec "$CTID" -- true &>/dev/null 2>&1 \
   || msg_error "Container ${CTID} did not become ready after 30 s."
 
-# Wait for actual internet connectivity (up to 60 s — gives DHCP time to set DNS)
-msg_info "Waiting for network inside container…"
-for i in $(seq 1 60); do
-  pct exec "$CTID" -- bash -c "curl -fsSo /dev/null https://deb.debian.org" &>/dev/null 2>&1 && break
+# Wait for a default route (IP connectivity, up to 30 s)
+for i in $(seq 1 30); do
+  pct exec "$CTID" -- ip route show default 2>/dev/null | grep -q default && break
   sleep 1
 done
-pct exec "$CTID" -- bash -c "curl -fsSo /dev/null https://deb.debian.org" &>/dev/null 2>&1 \
-  || msg_error "No internet access inside container after 60 s. Check bridge/firewall settings."
+
+# Wait for DNS to resolve (up to 60 s — gives DHCP time to set resolver)
+msg_info "Waiting for network inside container…"
+for i in $(seq 1 60); do
+  pct exec "$CTID" -- getent hosts deb.debian.org &>/dev/null 2>&1 && break
+  sleep 1
+done
+pct exec "$CTID" -- getent hosts deb.debian.org &>/dev/null 2>&1 \
+  || msg_error "No DNS/internet after 60 s. Check bridge/firewall settings."
 msg_ok "Container running, network ready"
+
+# ── Configure root auto-login for PVE console ─────────────────────────────────
+msg_info "Configuring root auto-login…"
+pct exec "$CTID" -- bash -c "
+  mkdir -p /etc/systemd/system/container-getty@1.service.d
+  cat > /etc/systemd/system/container-getty@1.service.d/override.conf <<'UNIT'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM
+UNIT
+"
+msg_ok "Root auto-login configured"
 
 # ── Bootstrap inside the container ────────────────────────────────────────────
 msg_info "Installing git inside container…"

@@ -14,6 +14,18 @@ export default defineConfig({
   build: {
     outDir: "dist",
     sourcemap: false,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom"],
+          router: ["react-router-dom"],
+          query: ["@tanstack/react-query"],
+          charts: ["recharts"],
+          icons: ["lucide-react"],
+        },
+      },
+    },
   },
   define: {
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),

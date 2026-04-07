@@ -157,7 +157,31 @@ ok "nginx configured and reloaded"
 # 9. Install and start systemd service
 # ---------------------------------------------------------------------------
 info "Installing systemd service…"
-cp "${SCRIPT_DIR}/systemd/dynadash-backend.service" /etc/systemd/system/
+# Generate the service file with the correct install path baked in.
+cat > /etc/systemd/system/dynadash-backend.service <<UNIT
+[Unit]
+Description=DynaDash FastAPI Backend
+After=network.target influxdb.service
+Wants=influxdb.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=${BACKEND_DIR}
+ExecStart=${BACKEND_DIR}/.venv/bin/uvicorn main:app \\
+    --host 127.0.0.1 \\
+    --port 8000 \\
+    --log-level info
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dynadash-backend
+ReadWritePaths=${BACKEND_DIR}/data
+
+[Install]
+WantedBy=multi-user.target
+UNIT
 systemctl daemon-reload
 systemctl enable dynadash-backend --quiet
 systemctl restart dynadash-backend

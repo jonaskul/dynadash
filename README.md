@@ -24,19 +24,13 @@ A professional home automation dashboard for Dynalite lighting and HVAC (thermos
 
 ## Installation
 
-### 1. Clone the repository
+Paste this one-liner into your PVE LXC console (as root):
 
 ```bash
-git clone https://github.com/jonaskul/dynadash.git /home/user/dynadash
-cd /home/user/dynadash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/jonaskul/dynadash/main/run.sh)"
 ```
 
-### 2. Run the install script
-
-```bash
-chmod +x install.sh
-sudo ./install.sh
-```
+DynaDash installs to `/opt/dynadash`. The same command also updates an existing installation.
 
 `install.sh` will:
 
@@ -93,12 +87,19 @@ A commented example is provided at `config.yaml.example`.
 
 ## Updating
 
+Run the same one-liner again — it detects the existing install and updates instead:
+
 ```bash
-cd /home/user/dynadash
-sudo ./update.sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/jonaskul/dynadash/main/run.sh)"
 ```
 
-This pulls the latest code, reinstalls Python deps, rebuilds the frontend, and restarts all services.
+Or from the install directory directly:
+
+```bash
+sudo /opt/dynadash/update.sh
+```
+
+Both pull the latest code, reinstall Python deps, rebuild the frontend, and restart all services.
 
 ---
 

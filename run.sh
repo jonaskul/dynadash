@@ -106,27 +106,43 @@ sys.exit(1)
 " 2>/dev/null || echo "local"
 }
 
-# ── Ensure Debian 12 template is downloaded ───────────────────────────────────
+# ── Ensure Debian 13 template is downloaded ───────────────────────────────────
+# Tries debian-13-standard first, falls back to debian-12-standard.
 # IMPORTANT: all msg_* calls use >&2 so they don't pollute the return value
 # captured by TEMPLATE=$(ensure_template ...).
 ensure_template() {
   local tmpl_storage="$1"
   local tmpl
+
+  # Prefer debian-13, fall back to debian-12
   tmpl=$(pveam list "$tmpl_storage" 2>/dev/null \
-    | awk '/debian-12-standard/{print $1; exit}')
+    | awk '/debian-13-standard/{print $1; exit}')
+  if [[ -z "$tmpl" ]]; then
+    tmpl=$(pveam list "$tmpl_storage" 2>/dev/null \
+      | awk '/debian-12-standard/{print $1; exit}')
+  fi
 
   if [[ -z "$tmpl" ]]; then
     msg_info "Updating template list…" >&2
     pveam update 2>/dev/null || true
+
     local avail
+    # Try debian-13 first
     avail=$(pveam available --section system 2>/dev/null \
-      | awk '/debian-12-standard/{print $2; exit}')
-    [[ -z "$avail" ]] && { msg_error "debian-12-standard not found in pveam available list." >&2; exit 1; }
-    msg_info "Downloading Debian 12 template (this may take a moment)…" >&2
+      | awk '/debian-13-standard/{print $2; exit}')
+    # Fall back to debian-12
+    if [[ -z "$avail" ]]; then
+      avail=$(pveam available --section system 2>/dev/null \
+        | awk '/debian-12-standard/{print $2; exit}')
+    fi
+    [[ -z "$avail" ]] && { msg_error "No debian-13 or debian-12 template found in pveam." >&2; exit 1; }
+
+    msg_info "Downloading template: ${avail} (this may take a moment)…" >&2
     pveam download "$tmpl_storage" "$avail" >&2 \
       || { msg_error "pveam download failed. Check internet connectivity." >&2; exit 1; }
+
     tmpl=$(pveam list "$tmpl_storage" 2>/dev/null \
-      | awk '/debian-12-standard/{print $1; exit}')
+      | awk '/debian-1[23]-standard/{print $1; exit}')
   fi
 
   [[ -z "$tmpl" ]] && { msg_error "Template not found after download attempt." >&2; exit 1; }
@@ -217,17 +233,33 @@ pct create "$CTID" "$TEMPLATE" \
   || msg_error "pct create failed (see output above). Check storage name and available space."
 msg_ok "Container ${CTID} created"
 
-# ── Start and wait ────────────────────────────────────────────────────────────
+# ── Start and wait for container + network ────────────────────────────────────
 msg_info "Starting container…"
 pct start "$CTID" || msg_error "pct start ${CTID} failed."
 
+# Wait for pct exec to work (container init)
 for i in $(seq 1 30); do
   pct exec "$CTID" -- true &>/dev/null 2>&1 && break
   sleep 1
 done
 pct exec "$CTID" -- true &>/dev/null 2>&1 \
   || msg_error "Container ${CTID} did not become ready after 30 s."
-msg_ok "Container running"
+
+# Set DNS immediately so it's available before DHCP might have finished
+pct exec "$CTID" -- bash -c "
+  echo 'nameserver 1.1.1.1' >  /etc/resolv.conf
+  echo 'nameserver 8.8.8.8' >> /etc/resolv.conf
+" &>/dev/null
+
+# Wait for actual internet connectivity (up to 60 s)
+msg_info "Waiting for network inside container…"
+for i in $(seq 1 60); do
+  pct exec "$CTID" -- bash -c "curl -fsSo /dev/null https://deb.debian.org" &>/dev/null 2>&1 && break
+  sleep 1
+done
+pct exec "$CTID" -- bash -c "curl -fsSo /dev/null https://deb.debian.org" &>/dev/null 2>&1 \
+  || msg_error "No internet access inside container after 60 s. Check bridge/firewall settings."
+msg_ok "Container running, network ready"
 
 # ── Bootstrap inside the container ────────────────────────────────────────────
 msg_info "Installing git inside container…"

@@ -24,15 +24,20 @@ A professional home automation dashboard for Dynalite lighting and HVAC (thermos
 
 ## Installation
 
-Paste this one-liner into your PVE LXC console (as root):
+Run this **on the Proxmox VE host** (not inside a container):
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/jonaskul/dynadash/main/run.sh)"
 ```
 
-DynaDash installs to `/opt/dynadash`. The same command also updates an existing installation.
+The script will:
+1. Ask whether you want default settings or advanced (RAM, disk, CPU, network)
+2. Download the latest Debian 12 LXC template (if not cached)
+3. Create and start the LXC container
+4. Clone DynaDash and run the full installer inside the container
+5. Print the dashboard URL when done
 
-`install.sh` will:
+`install.sh` (which runs inside the container) will:
 
 1. Install system packages (`python3`, `nodejs`, `npm`, `nginx`, `influxdb2`)
 2. Initialise InfluxDB and write a `config.yaml` with the generated token
@@ -87,19 +92,20 @@ A commented example is provided at `config.yaml.example`.
 
 ## Updating
 
-Run the same one-liner again — it detects the existing install and updates instead:
+Run this on the **Proxmox VE host**, replacing `<CTID>` with your container ID:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/jonaskul/dynadash/main/run.sh)"
+pct exec <CTID> -- /opt/dynadash/update.sh
 ```
 
-Or from the install directory directly:
+Or enter the container first:
 
 ```bash
-sudo /opt/dynadash/update.sh
+pct enter <CTID>
+/opt/dynadash/update.sh
 ```
 
-Both pull the latest code, reinstall Python deps, rebuild the frontend, and restart all services.
+This pulls the latest code, reinstalls Python deps, rebuilds the frontend, and restarts all services.
 
 ---
 

@@ -15,9 +15,7 @@ A professional home automation dashboard for Dynalite lighting and HVAC (thermos
 
 ## Prerequisites
 
-- Debian 11 / 12 or Ubuntu 22.04+ LXC container (or VM)
-- Root access
-- Internet connection (for apt packages and npm)
+- Proxmox VE host with internet access
 - A Dynalite Ethernet Gateway reachable on the local network
 
 ---
@@ -31,20 +29,36 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/jonaskul/dynadash/main/r
 ```
 
 The script will:
-1. Ask whether you want default settings or advanced (RAM, disk, CPU, network)
-2. Download the latest Debian 12 LXC template (if not cached)
-3. Create and start the LXC container
-4. Clone DynaDash and run the full installer inside the container
-5. Print the dashboard URL when done
+1. Ask whether you want default settings or advanced (CT ID, RAM, disk, CPU, network)
+2. Download the latest Debian 13 LXC template (falls back to Debian 12 if 13 is unavailable)
+3. Create and start an unprivileged LXC container
+4. Configure **root auto-login** on the PVE console
+5. Wait for DHCP and DNS before proceeding
+6. Clone DynaDash and run the full installer inside the container
+7. Print the dashboard URL and update command when done
+
+**Default container settings:**
+
+| Setting | Value |
+|---|---|
+| Hostname | `dynadash` |
+| RAM | 1024 MB |
+| Swap | 512 MB |
+| Disk | 8 GB |
+| CPU | 2 cores |
+| Network | vmbr0, DHCP |
+| Install path | `/opt/dynadash` |
 
 `install.sh` (which runs inside the container) will:
 
-1. Install system packages (`python3`, `nodejs`, `npm`, `nginx`, `influxdb2`)
-2. Initialise InfluxDB and write a `config.yaml` with the generated token
-3. Create a Python virtual environment and install backend dependencies
-4. Build the React frontend and deploy it to `/var/www/dynadash`
-5. Configure nginx (port 80, proxy `/api/` to FastAPI)
-6. Install and start the `dynadash-backend` systemd service
+1. Install system packages (`python3`, `nginx`, `curl`, `jq`)
+2. Install **Node.js 20 LTS** via NodeSource
+3. Add the InfluxData apt repo and install `influxdb2` + `influxdb2-cli`
+4. Initialise InfluxDB and write `backend/config.yaml` with the generated token
+5. Create a Python virtual environment and install backend dependencies
+6. Build the React frontend (`npm install && npm run build`) and deploy to `/var/www/dynadash`
+7. Configure nginx (port 80, proxy `/api/` to FastAPI, SPA fallback)
+8. Install and start the `dynadash-backend` systemd service
 
 At the end it prints the dashboard URL, e.g. `http://192.168.1.10/`.
 
@@ -66,6 +80,25 @@ At the end it prints the dashboard URL, e.g. `http://192.168.1.10/`.
 
 ---
 
+## Updating
+
+Run on the **Proxmox VE host**, replacing `<CTID>` with your container ID:
+
+```bash
+pct exec <CTID> -- /opt/dynadash/update.sh
+```
+
+Or enter the container first:
+
+```bash
+pct enter <CTID>
+/opt/dynadash/update.sh
+```
+
+This pulls the latest code, reinstalls Python deps, rebuilds the frontend, and restarts all services.
+
+---
+
 ## Editing `config.yaml`
 
 `backend/config.yaml` is written automatically by `install.sh`. You normally don't need to edit it. If you do:
@@ -83,43 +116,24 @@ polling_interval_seconds: 10     # How often to poll the gateway
 Restart the backend after editing:
 
 ```bash
-sudo systemctl restart dynadash-backend
+systemctl restart dynadash-backend
 ```
 
 A commented example is provided at `config.yaml.example`.
 
 ---
 
-## Updating
-
-Run this on the **Proxmox VE host**, replacing `<CTID>` with your container ID:
-
-```bash
-pct exec <CTID> -- /opt/dynadash/update.sh
-```
-
-Or enter the container first:
-
-```bash
-pct enter <CTID>
-/opt/dynadash/update.sh
-```
-
-This pulls the latest code, reinstalls Python deps, rebuilds the frontend, and restarts all services.
-
----
-
-## Service management
+## Service management (inside the container)
 
 ```bash
 # Backend logs
-sudo journalctl -u dynadash-backend -f
+journalctl -u dynadash-backend -f
 
 # Restart backend
-sudo systemctl restart dynadash-backend
+systemctl restart dynadash-backend
 
 # Reload nginx
-sudo nginx -t && sudo systemctl reload nginx
+nginx -t && systemctl reload nginx
 ```
 
 ---
@@ -135,8 +149,9 @@ Browser → nginx (port 80)
                └── /*     → /var/www/dynadash (React SPA)
 ```
 
-- Gateway credentials are stored in `backend/data/gateway.json` (not in source control)
-- Area definitions are stored in `backend/data/areas.json` (not in source control)
+- Installed to `/opt/dynadash` inside the LXC container
+- Gateway credentials stored in `backend/data/gateway.json` (not in source control)
+- Area definitions stored in `backend/data/areas.json` (not in source control)
 - All time-series data lives in InfluxDB under the `dynadash` bucket
 
 ---

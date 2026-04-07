@@ -44,6 +44,7 @@ export default function SettingsView() {
 
   const [ip, setIp] = useState("");
   const [https, setHttps] = useState(false);
+  const [verifySSL, setVerifySSL] = useState(true);
   const [editing, setEditing] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [testing, setTesting] = useState(false);
@@ -55,6 +56,7 @@ export default function SettingsView() {
   function startEditing() {
     setIp(gateway?.ip ?? "");
     setHttps(gateway?.scheme === "https");
+    setVerifySSL(gateway?.verify_ssl ?? true);
     setTestResult(null);
     setError(null);
     setEditing(true);
@@ -66,7 +68,7 @@ export default function SettingsView() {
     setTestResult(null);
     const url = `${scheme}://${ip}/GetDyNet.cgi?a=1&p=65535&j=255`;
     try {
-      const result = await testGateway({ ip, scheme });
+      const result = await testGateway({ ip, scheme, verify_ssl: verifySSL });
       setTestResult({ ...result, url });
     } catch (e) {
       setTestResult({ success: false, message: String(e), url });
@@ -80,7 +82,7 @@ export default function SettingsView() {
     setSaving(true);
     setError(null);
     try {
-      await saveGateway({ ip, scheme });
+      await saveGateway({ ip, scheme, verify_ssl: verifySSL });
       queryClient.invalidateQueries({ queryKey: ["gateway"] });
       setEditing(false);
     } catch (e) {
@@ -126,6 +128,11 @@ export default function SettingsView() {
                 className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue" />
               <span className="text-sm text-slate-300">Use HTTPS</span>
             </label>
+            <label className={`flex items-center gap-2.5 select-none ${https ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}>
+              <input type="checkbox" checked={!verifySSL} onChange={(e) => setVerifySSL(!e.target.checked)}
+                disabled={!https} className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue" />
+              <span className="text-sm text-slate-300">Ignore certificate errors</span>
+            </label>
             {testResult && <TerminalResult result={testResult} />}
             {error && <p className="text-sm text-red-400">{error}</p>}
             <div className="flex gap-3">
@@ -152,6 +159,14 @@ export default function SettingsView() {
                 <span className="text-slate-400">Protocol</span>
                 <span className="font-mono text-white">{gateway.scheme}</span>
               </div>
+              {gateway.scheme === "https" && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">Verify SSL</span>
+                  <span className={`font-mono ${gateway.verify_ssl ? "text-green-400" : "text-amber-400"}`}>
+                    {gateway.verify_ssl ? "yes" : "no"}
+                  </span>
+                </div>
+              )}
             </div>
             <button onClick={startEditing}
               className="w-full rounded-lg border border-white/15 bg-white/5 py-2 text-sm font-medium text-slate-300 hover:text-white hover:bg-white/10 transition">
@@ -169,6 +184,11 @@ export default function SettingsView() {
               <input type="checkbox" checked={https} onChange={(e) => setHttps(e.target.checked)}
                 className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue" />
               <span className="text-sm text-slate-300">Use HTTPS</span>
+            </label>
+            <label className={`flex items-center gap-2.5 select-none ${https ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}>
+              <input type="checkbox" checked={!verifySSL} onChange={(e) => setVerifySSL(!e.target.checked)}
+                disabled={!https} className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue" />
+              <span className="text-sm text-slate-300">Ignore certificate errors</span>
             </label>
             {testResult && <TerminalResult result={testResult} />}
             {error && <p className="text-sm text-red-400">{error}</p>}

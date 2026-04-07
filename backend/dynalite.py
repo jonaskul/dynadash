@@ -12,8 +12,9 @@ class DynaliteError(Exception):
 class DynaliteClient:
     """Async HTTP client for the Dynalite Ethernet Gateway CGI API."""
 
-    def __init__(self, ip: str, scheme: str = "http") -> None:
+    def __init__(self, ip: str, scheme: str = "http", verify_ssl: bool = True) -> None:
         self.base_url = f"{scheme}://{ip}"
+        self._verify_ssl = verify_ssl
 
     # ------------------------------------------------------------------
     # Low-level helpers
@@ -33,7 +34,7 @@ class DynaliteClient:
     async def _get(self, endpoint: str, params: dict[str, str | int]) -> dict[str, str]:
         url = f"{self.base_url}/{endpoint}"
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=5.0, verify=self._verify_ssl) as client:
                 response = await client.get(url, params=params)
                 response.raise_for_status()
                 return self._parse_response(response.text)

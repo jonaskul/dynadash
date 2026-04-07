@@ -8,6 +8,7 @@ export default function SetupView() {
 
   const [ip, setIp] = useState("");
   const [https, setHttps] = useState(false);
+  const [verifySSL, setVerifySSL] = useState(true);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; url: string } | null>(null);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -21,7 +22,7 @@ export default function SetupView() {
     setTestResult(null);
     const url = `${scheme}://${ip}/GetDyNet.cgi?a=1&p=65535&j=255`;
     try {
-      const result = await testGateway({ ip, scheme });
+      const result = await testGateway({ ip, scheme, verify_ssl: verifySSL });
       setTestResult({ ...result, url });
     } catch (e) {
       setTestResult({ success: false, message: String(e), url });
@@ -38,7 +39,7 @@ export default function SetupView() {
     setSaving(true);
     setError(null);
     try {
-      await saveGateway({ ip, scheme });
+      await saveGateway({ ip, scheme, verify_ssl: verifySSL });
       navigate("/areas");
     } catch (e) {
       setError(String(e));
@@ -86,6 +87,17 @@ export default function SetupView() {
               className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue"
             />
             <span className="text-sm text-slate-300">Use HTTPS</span>
+          </label>
+
+          <label className={`flex items-center gap-2.5 select-none ${https ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}>
+            <input
+              type="checkbox"
+              checked={!verifySSL}
+              onChange={(e) => setVerifySSL(!e.target.checked)}
+              disabled={!https}
+              className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue"
+            />
+            <span className="text-sm text-slate-300">Ignore certificate errors</span>
           </label>
         </div>
 

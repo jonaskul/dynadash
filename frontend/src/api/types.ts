@@ -5,11 +5,13 @@
 export interface GatewayConfig {
   ip: string;
   scheme: "http" | "https";
+  verify_ssl: boolean;
 }
 
 export interface GatewayConfigOut {
   ip: string;
   scheme: "http" | "https";
+  verify_ssl: boolean;
 }
 
 export interface TestResult {

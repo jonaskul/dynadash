@@ -1,4 +1,4 @@
-import { CheckCircle, Loader2, XCircle, Zap } from "lucide-react";
+import { Loader2, Zap } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { saveGateway, testGateway } from "../api/client";
@@ -7,7 +7,7 @@ export default function SetupView() {
   const navigate = useNavigate();
 
   const [ip, setIp] = useState("");
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; url: string } | null>(null);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,11 +16,12 @@ export default function SetupView() {
     if (!ip) return;
     setTesting(true);
     setTestResult(null);
+    const url = `http://${ip}/GetDyNet.cgi?a=1&p=65535&j=255`;
     try {
       const result = await testGateway({ ip });
-      setTestResult(result);
+      setTestResult({ ...result, url });
     } catch (e) {
-      setTestResult({ success: false, message: String(e) });
+      setTestResult({ success: false, message: String(e), url });
     } finally {
       setTesting(false);
     }
@@ -77,19 +78,13 @@ export default function SetupView() {
 
         {/* Test connection result */}
         {testResult && (
-          <div
-            className={`mt-4 flex items-center gap-2 rounded-lg p-3 text-sm ${
-              testResult.success
-                ? "bg-green-500/10 border border-green-500/30 text-green-400"
-                : "bg-red-500/10 border border-red-500/30 text-red-400"
-            }`}
-          >
-            {testResult.success ? (
-              <CheckCircle className="h-4 w-4 shrink-0" />
-            ) : (
-              <XCircle className="h-4 w-4 shrink-0" />
-            )}
-            {testResult.message}
+          <div className="mt-4 rounded-lg bg-black/60 border border-white/10 p-3 font-mono text-xs space-y-1">
+            <div className="text-slate-400">
+              <span className="text-green-400">$</span> GET {testResult.url}
+            </div>
+            <div className={testResult.success ? "text-green-400" : "text-red-400"}>
+              <span className="text-slate-500">&gt;</span> {testResult.message}
+            </div>
           </div>
         )}
 

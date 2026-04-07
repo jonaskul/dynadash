@@ -15,7 +15,7 @@ function LiveClock() {
 
   return (
     <span className="text-sm font-mono text-slate-400 tabular-nums">
-      {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+      {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
     </span>
   );
 }

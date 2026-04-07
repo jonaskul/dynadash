@@ -1,7 +1,37 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, Loader2, Trash2, XCircle } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { deleteGateway, getGateway, saveGateway, testGateway } from "../api/client";
+
+declare const __BUILD_TIME__: string;
+
+function buildVersion(): string {
+  try {
+    const d = new Date(__BUILD_TIME__);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return (
+      `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
+      `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`
+    );
+  } catch {
+    return "unknown";
+  }
+}
+
+type TestResult = { success: boolean; message: string; url: string };
+
+function TerminalResult({ result }: { result: TestResult }) {
+  return (
+    <div className="rounded-lg bg-black/60 border border-white/10 p-3 font-mono text-xs space-y-1">
+      <div className="text-slate-400 break-all">
+        <span className="text-green-400">$</span> GET {result.url}
+      </div>
+      <div className={result.success ? "text-green-400" : "text-red-400"}>
+        <span className="text-slate-500">&gt;</span> {result.message}
+      </div>
+    </div>
+  );
+}
 
 export default function SettingsView() {
   const queryClient = useQueryClient();
@@ -14,7 +44,7 @@ export default function SettingsView() {
 
   const [ip, setIp] = useState("");
   const [editing, setEditing] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,11 +60,12 @@ export default function SettingsView() {
     if (!ip) return;
     setTesting(true);
     setTestResult(null);
+    const url = `http://${ip}/GetDyNet.cgi?a=1&p=65535&j=255`;
     try {
       const result = await testGateway({ ip });
-      setTestResult(result);
+      setTestResult({ ...result, url });
     } catch (e) {
-      setTestResult({ success: false, message: String(e) });
+      setTestResult({ success: false, message: String(e), url });
     } finally {
       setTesting(false);
     }
@@ -86,16 +117,7 @@ export default function SettingsView() {
               <input type="text" className={inputCls} value={ip}
                 onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.50" />
             </div>
-            {testResult && (
-              <div className={`flex items-center gap-2 rounded-lg p-3 text-sm ${
-                testResult.success
-                  ? "bg-green-500/10 border border-green-500/30 text-green-400"
-                  : "bg-red-500/10 border border-red-500/30 text-red-400"
-              }`}>
-                {testResult.success ? <CheckCircle className="h-4 w-4 shrink-0" /> : <XCircle className="h-4 w-4 shrink-0" />}
-                {testResult.message}
-              </div>
-            )}
+            {testResult && <TerminalResult result={testResult} />}
             {error && <p className="text-sm text-red-400">{error}</p>}
             <div className="flex gap-3">
               <button onClick={handleTest} disabled={testing || !ip}
@@ -130,20 +152,8 @@ export default function SettingsView() {
               <input type="text" className={inputCls} value={ip}
                 onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.50" />
             </div>
-
-            {testResult && (
-              <div className={`flex items-center gap-2 rounded-lg p-3 text-sm ${
-                testResult.success
-                  ? "bg-green-500/10 border border-green-500/30 text-green-400"
-                  : "bg-red-500/10 border border-red-500/30 text-red-400"
-              }`}>
-                {testResult.success ? <CheckCircle className="h-4 w-4 shrink-0" /> : <XCircle className="h-4 w-4 shrink-0" />}
-                {testResult.message}
-              </div>
-            )}
-
+            {testResult && <TerminalResult result={testResult} />}
             {error && <p className="text-sm text-red-400">{error}</p>}
-
             <div className="flex gap-3">
               <button onClick={handleTest} disabled={testing || !ip}
                 className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition disabled:opacity-40">
@@ -178,6 +188,11 @@ export default function SettingsView() {
           </button>
         </div>
       )}
+
+      {/* Version */}
+      <div className="flex justify-end">
+        <span className="text-xs font-mono text-slate-600">{buildVersion()}</span>
+      </div>
     </div>
   );
 }

@@ -107,6 +107,8 @@ sys.exit(1)
 }
 
 # ── Ensure Debian 12 template is downloaded ───────────────────────────────────
+# IMPORTANT: all msg_* calls use >&2 so they don't pollute the return value
+# captured by TEMPLATE=$(ensure_template ...).
 ensure_template() {
   local tmpl_storage="$1"
   local tmpl
@@ -114,22 +116,22 @@ ensure_template() {
     | awk '/debian-12-standard/{print $1; exit}')
 
   if [[ -z "$tmpl" ]]; then
-    msg_info "Updating template list…"
+    msg_info "Updating template list…" >&2
     pveam update 2>/dev/null || true
     local avail
     avail=$(pveam available --section system 2>/dev/null \
       | awk '/debian-12-standard/{print $2; exit}')
-    [[ -z "$avail" ]] && msg_error "debian-12-standard not found in pveam available list."
-    msg_info "Downloading Debian 12 template (this may take a moment)…"
-    pveam download "$tmpl_storage" "$avail" \
-      || msg_error "pveam download failed. Check internet connectivity."
+    [[ -z "$avail" ]] && { msg_error "debian-12-standard not found in pveam available list." >&2; exit 1; }
+    msg_info "Downloading Debian 12 template (this may take a moment)…" >&2
+    pveam download "$tmpl_storage" "$avail" >&2 \
+      || { msg_error "pveam download failed. Check internet connectivity." >&2; exit 1; }
     tmpl=$(pveam list "$tmpl_storage" 2>/dev/null \
       | awk '/debian-12-standard/{print $1; exit}')
   fi
 
-  [[ -z "$tmpl" ]] && msg_error "Template not found after download attempt."
-  msg_ok "Template: $tmpl"
-  echo "$tmpl"
+  [[ -z "$tmpl" ]] && { msg_error "Template not found after download attempt." >&2; exit 1; }
+  msg_ok "Template: $tmpl" >&2
+  echo "$tmpl"   # ← only this line goes to stdout / gets captured
 }
 
 # ── Interactive prompts (reads from /dev/tty so curl-pipe works) ──────────────

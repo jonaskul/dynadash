@@ -245,13 +245,7 @@ done
 pct exec "$CTID" -- true &>/dev/null 2>&1 \
   || msg_error "Container ${CTID} did not become ready after 30 s."
 
-# Set DNS immediately so it's available before DHCP might have finished
-pct exec "$CTID" -- bash -c "
-  echo 'nameserver 1.1.1.1' >  /etc/resolv.conf
-  echo 'nameserver 8.8.8.8' >> /etc/resolv.conf
-" &>/dev/null
-
-# Wait for actual internet connectivity (up to 60 s)
+# Wait for actual internet connectivity (up to 60 s — gives DHCP time to set DNS)
 msg_info "Waiting for network inside container…"
 for i in $(seq 1 60); do
   pct exec "$CTID" -- bash -c "curl -fsSo /dev/null https://deb.debian.org" &>/dev/null 2>&1 && break

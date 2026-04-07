@@ -1,22 +1,14 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LayoutGrid, Plus } from "lucide-react";
-import { useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { getAreas, getGateway } from "../api/client";
+import { Link } from "react-router-dom";
+import { getAreas } from "../api/client";
 import type { LightingAreaState, ThermostatAreaState } from "../api/types";
 import LightingCard from "../components/LightingCard";
 import StatusBanner from "../components/StatusBanner";
 import ThermostatCard from "../components/ThermostatCard";
 
 export default function ControlView() {
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
-
-  const { data: gateway, isLoading: gwLoading } = useQuery({
-    queryKey: ["gateway"],
-    queryFn: getGateway,
-    staleTime: 30_000,
-  });
 
   const {
     data: areas = [],
@@ -27,20 +19,13 @@ export default function ControlView() {
     queryFn: getAreas,
     refetchInterval: 10_000,
     retry: false,
-    enabled: gateway !== undefined,
   });
-
-  useEffect(() => {
-    if (!gwLoading && (gateway === null || gateway === undefined)) {
-      navigate("/setup");
-    }
-  }, [gateway, gwLoading, navigate]);
 
   function refresh() {
     queryClient.invalidateQueries({ queryKey: ["areas"] });
   }
 
-  if (gwLoading || areasLoading) {
+  if (areasLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-electric-blue border-t-transparent" />

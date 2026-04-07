@@ -4,14 +4,10 @@
 
 export interface GatewayConfig {
   ip: string;
-  username: string;
-  password: string;
 }
 
 export interface GatewayConfigOut {
   ip: string;
-  username: string;
-  password: string; // "***" from server
 }
 
 export interface TestResult {

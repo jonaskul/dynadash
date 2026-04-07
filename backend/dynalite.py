@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 from typing import Optional
 
 import httpx
@@ -13,10 +12,8 @@ class DynaliteError(Exception):
 class DynaliteClient:
     """Async HTTP client for the Dynalite Ethernet Gateway CGI API."""
 
-    def __init__(self, ip: str, username: str, password: str) -> None:
+    def __init__(self, ip: str) -> None:
         self.base_url = f"http://{ip}"
-        credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
-        self._headers = {"Authorization": f"Basic {credentials}"}
 
     # ------------------------------------------------------------------
     # Low-level helpers
@@ -37,7 +34,7 @@ class DynaliteClient:
         url = f"{self.base_url}/{endpoint}"
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(url, params=params, headers=self._headers)
+                response = await client.get(url, params=params)
                 response.raise_for_status()
                 return self._parse_response(response.text)
         except httpx.HTTPError as exc:

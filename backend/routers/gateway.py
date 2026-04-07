@@ -4,8 +4,7 @@ import json
 from pathlib import Path
 from typing import Optional
 
-import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from dynalite import DynaliteClient, DynaliteError
@@ -18,14 +17,10 @@ GATEWAY_FILE = DATA_DIR / "gateway.json"
 
 class GatewayConfigIn(BaseModel):
     ip: str
-    username: str
-    password: str
 
 
 class GatewayConfigOut(BaseModel):
     ip: str
-    username: str
-    password: str  # "***" when reading
 
 
 class TestResult(BaseModel):
@@ -49,24 +44,24 @@ def _save(data: dict[str, str]) -> None:
 
 @router.get("", response_model=Optional[GatewayConfigOut])
 async def get_gateway() -> Optional[GatewayConfigOut]:
-    """Return the current gateway config with the password masked."""
+    """Return the current gateway config."""
     data = _load()
     if data is None:
         return None
-    return GatewayConfigOut(ip=data["ip"], username=data["username"], password="***")
+    return GatewayConfigOut(ip=data["ip"])
 
 
 @router.post("", response_model=GatewayConfigOut)
 async def save_gateway(body: GatewayConfigIn) -> GatewayConfigOut:
     """Persist gateway connection settings."""
-    _save({"ip": body.ip, "username": body.username, "password": body.password})
-    return GatewayConfigOut(ip=body.ip, username=body.username, password="***")
+    _save({"ip": body.ip})
+    return GatewayConfigOut(ip=body.ip)
 
 
 @router.post("/test", response_model=TestResult)
 async def test_gateway(body: GatewayConfigIn) -> TestResult:
     """Test connectivity to the given gateway without saving settings."""
-    client = DynaliteClient(ip=body.ip, username=body.username, password=body.password)
+    client = DynaliteClient(ip=body.ip)
     try:
         await client.test_connection()
         return TestResult(success=True, message="Connection successful.")
@@ -78,6 +73,6 @@ async def test_gateway(body: GatewayConfigIn) -> TestResult:
 
 @router.delete("", status_code=204)
 async def delete_gateway() -> None:
-    """Remove the gateway configuration, triggering the onboarding screen."""
+    """Remove the gateway configuration."""
     if GATEWAY_FILE.exists():
         GATEWAY_FILE.unlink()

@@ -64,7 +64,7 @@ def _get_client() -> DynaliteClient:
     gw = _load_gateway()
     if not gw:
         raise HTTPException(status_code=503, detail="Gateway not configured")
-    return DynaliteClient(ip=gw["ip"], username=gw["username"], password=gw["password"])
+    return DynaliteClient(ip=gw["ip"])
 
 
 def _require_area(area_id: int, areas: list[dict[str, Any]]) -> dict[str, Any]:

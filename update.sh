@@ -5,6 +5,10 @@
 
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="${SCRIPT_DIR}/backend"
 FRONTEND_DIR="${SCRIPT_DIR}/frontend"
@@ -50,7 +54,7 @@ ok "Python dependencies updated"
 # ---------------------------------------------------------------------------
 info "Rebuilding frontend…"
 cd "${FRONTEND_DIR}"
-npm ci --silent
+npm install --silent
 npm run build --silent
 cd "${SCRIPT_DIR}"
 ok "Frontend rebuilt"

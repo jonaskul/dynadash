@@ -5,6 +5,10 @@
 
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+export LANG=C.UTF-8
+export LC_ALL=C.UTF-8
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="${SCRIPT_DIR}/backend"
 FRONTEND_DIR="${SCRIPT_DIR}/frontend"
@@ -27,18 +31,32 @@ error() { echo -e "${RED}[DynaDash] ✗${NC} $*" >&2; exit 1; }
 [[ $EUID -ne 0 ]] && error "This script must be run as root."
 
 # ---------------------------------------------------------------------------
-# 1. System packages
+# 1. System packages (no nodejs here — installed via NodeSource below)
 # ---------------------------------------------------------------------------
 info "Installing system packages…"
 apt-get update -qq
 apt-get install -y -qq \
     python3 python3-pip python3-venv \
-    nodejs npm \
     nginx \
     curl jq openssl ca-certificates gnupg
 
 # ---------------------------------------------------------------------------
-# 2. InfluxDB 2.x via official apt repo
+# 2. Node.js 20 LTS via NodeSource
+#    (Debian's built-in nodejs is too old for Vite 5 / React 18)
+# ---------------------------------------------------------------------------
+NODE_MAJOR=20
+if ! command -v node &>/dev/null \
+    || [[ "$(node -e 'process.stdout.write(process.version)')" < "v${NODE_MAJOR}" ]]; then
+    info "Installing Node.js ${NODE_MAJOR} LTS (NodeSource)…"
+    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - &>/dev/null
+    apt-get install -y -qq nodejs
+    ok "Node.js $(node --version) installed"
+else
+    ok "Node.js $(node --version) already installed"
+fi
+
+# ---------------------------------------------------------------------------
+# 3. InfluxDB 2.x via official apt repo
 # ---------------------------------------------------------------------------
 if ! command -v influx &>/dev/null; then
     info "Adding InfluxData apt repository…"
@@ -54,13 +72,12 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Start InfluxDB
+# 4. Start InfluxDB
 # ---------------------------------------------------------------------------
 info "Enabling and starting InfluxDB…"
 systemctl enable influxdb --quiet
 systemctl start influxdb
 
-# Wait for InfluxDB to be ready
 for i in $(seq 1 15); do
     if influx ping &>/dev/null 2>&1; then break; fi
     sleep 1
@@ -69,14 +86,13 @@ influx ping &>/dev/null 2>&1 || error "InfluxDB did not become ready in time."
 ok "InfluxDB is running"
 
 # ---------------------------------------------------------------------------
-# 4. Initialise InfluxDB (idempotent)
+# 5. Initialise InfluxDB (idempotent)
 # ---------------------------------------------------------------------------
 if [[ -f "${CONFIG_YAML}" ]] && grep -q "token:" "${CONFIG_YAML}" 2>/dev/null; then
     info "InfluxDB already initialised — skipping setup"
     INFLUX_TOKEN="$(grep 'token:' "${CONFIG_YAML}" | awk '{print $2}' | tr -d '"')"
 else
     info "Initialising InfluxDB…"
-    # Check if already set up
     if influx org list &>/dev/null 2>&1; then
         info "InfluxDB already has config — creating token only"
         INFLUX_TOKEN="$(influx auth create \
@@ -99,7 +115,6 @@ else
     fi
     ok "InfluxDB initialised"
 
-    # Write config.yaml
     info "Writing ${CONFIG_YAML}…"
     cat > "${CONFIG_YAML}" <<EOF
 influxdb:
@@ -114,7 +129,7 @@ EOF
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Python virtual environment & dependencies
+# 6. Python virtual environment & dependencies
 # ---------------------------------------------------------------------------
 info "Setting up Python virtual environment…"
 if [[ ! -d "${BACKEND_DIR}/.venv" ]]; then
@@ -125,17 +140,17 @@ fi
 ok "Python dependencies installed"
 
 # ---------------------------------------------------------------------------
-# 6. Build frontend
+# 7. Build frontend
 # ---------------------------------------------------------------------------
 info "Installing frontend npm dependencies…"
 cd "${FRONTEND_DIR}"
-npm ci --silent
+npm install --silent
 info "Building frontend…"
 npm run build --silent
 ok "Frontend built"
 
 # ---------------------------------------------------------------------------
-# 7. Deploy frontend to nginx web root
+# 8. Deploy frontend to nginx web root
 # ---------------------------------------------------------------------------
 info "Deploying frontend to ${WWW_DIR}…"
 mkdir -p "${WWW_DIR}"
@@ -144,7 +159,7 @@ cp -r "${FRONTEND_DIR}/dist/." "${WWW_DIR}/"
 ok "Frontend deployed"
 
 # ---------------------------------------------------------------------------
-# 8. Configure nginx
+# 9. Configure nginx
 # ---------------------------------------------------------------------------
 info "Configuring nginx…"
 cp "${SCRIPT_DIR}/nginx/dynadash.conf" /etc/nginx/sites-enabled/dynadash
@@ -154,10 +169,9 @@ systemctl reload nginx
 ok "nginx configured and reloaded"
 
 # ---------------------------------------------------------------------------
-# 9. Install and start systemd service
+# 10. Install and start systemd service
 # ---------------------------------------------------------------------------
 info "Installing systemd service…"
-# Generate the service file with the correct install path baked in.
 cat > /etc/systemd/system/dynadash-backend.service <<UNIT
 [Unit]
 Description=DynaDash FastAPI Backend

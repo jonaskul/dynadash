@@ -30,7 +30,6 @@ function GatewayDot() {
 
   const reachable =
     Array.isArray(areas) && areas.length > 0 && areas[0].gateway_reachable;
-  const configured = Array.isArray(areas);
 
   const { data: gw } = useQuery({
     queryKey: ["gateway"],

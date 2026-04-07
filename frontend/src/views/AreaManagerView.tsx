@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Edit2, Plus, Trash2, X } from "lucide-react";
 import { useState } from "react";
 import { createArea, deleteArea, getConfigAreas, updateArea } from "../api/client";
@@ -9,15 +9,6 @@ interface PresetRow {
   label: string;
 }
 
-const DEFAULT_FORM: Omit<AreaConfig, "id"> = {
-  name: "",
-  type: "lighting",
-  channels: 1,
-  presets: {},
-  temp_min: 16,
-  temp_max: 30,
-  order: 0,
-};
 
 function presetsToRows(presets: Record<string, string>): PresetRow[] {
   return Object.entries(presets).map(([key, label]) => ({ key, label }));

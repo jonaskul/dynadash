@@ -42,9 +42,9 @@ apt-get install -y -qq \
 # ---------------------------------------------------------------------------
 if ! command -v influx &>/dev/null; then
     info "Adding InfluxData apt repository…"
-    curl -fsSL https://repos.influxdata.com/influxdata-archive_compat.key \
-        | gpg --dearmor -o /etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg
-    echo 'deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive_compat.gpg] https://repos.influxdata.com/debian stable main' \
+    curl -fsSL https://repos.influxdata.com/influxdata-archive.key \
+        | gpg --dearmor -o /etc/apt/trusted.gpg.d/influxdata-archive.gpg
+    echo 'deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main' \
         > /etc/apt/sources.list.d/influxdata.list
     apt-get update -qq
     apt-get install -y -qq influxdb2 influxdb2-cli

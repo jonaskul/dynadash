@@ -43,14 +43,18 @@ export default function SettingsView() {
   });
 
   const [ip, setIp] = useState("");
+  const [https, setHttps] = useState(false);
   const [editing, setEditing] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const scheme = https ? "https" : "http";
+
   function startEditing() {
     setIp(gateway?.ip ?? "");
+    setHttps(gateway?.scheme === "https");
     setTestResult(null);
     setError(null);
     setEditing(true);
@@ -60,9 +64,9 @@ export default function SettingsView() {
     if (!ip) return;
     setTesting(true);
     setTestResult(null);
-    const url = `http://${ip}/GetDyNet.cgi?a=1&p=65535&j=255`;
+    const url = `${scheme}://${ip}/GetDyNet.cgi?a=1&p=65535&j=255`;
     try {
-      const result = await testGateway({ ip });
+      const result = await testGateway({ ip, scheme });
       setTestResult({ ...result, url });
     } catch (e) {
       setTestResult({ success: false, message: String(e), url });
@@ -76,7 +80,7 @@ export default function SettingsView() {
     setSaving(true);
     setError(null);
     try {
-      await saveGateway({ ip });
+      await saveGateway({ ip, scheme });
       queryClient.invalidateQueries({ queryKey: ["gateway"] });
       setEditing(false);
     } catch (e) {
@@ -117,6 +121,11 @@ export default function SettingsView() {
               <input type="text" className={inputCls} value={ip}
                 onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.50" />
             </div>
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <input type="checkbox" checked={https} onChange={(e) => setHttps(e.target.checked)}
+                className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue" />
+              <span className="text-sm text-slate-300">Use HTTPS</span>
+            </label>
             {testResult && <TerminalResult result={testResult} />}
             {error && <p className="text-sm text-red-400">{error}</p>}
             <div className="flex gap-3">
@@ -134,10 +143,14 @@ export default function SettingsView() {
           </div>
         ) : !editing ? (
           <div className="space-y-3">
-            <div className="rounded-lg border border-white/10 bg-white/5 p-4">
+            <div className="rounded-lg border border-white/10 bg-white/5 p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-400">IP Address</span>
                 <span className="font-mono text-white">{gateway.ip}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Protocol</span>
+                <span className="font-mono text-white">{gateway.scheme}</span>
               </div>
             </div>
             <button onClick={startEditing}
@@ -152,6 +165,11 @@ export default function SettingsView() {
               <input type="text" className={inputCls} value={ip}
                 onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.50" />
             </div>
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <input type="checkbox" checked={https} onChange={(e) => setHttps(e.target.checked)}
+                className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue" />
+              <span className="text-sm text-slate-300">Use HTTPS</span>
+            </label>
             {testResult && <TerminalResult result={testResult} />}
             {error && <p className="text-sm text-red-400">{error}</p>}
             <div className="flex gap-3">

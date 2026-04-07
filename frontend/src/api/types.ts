@@ -4,10 +4,12 @@
 
 export interface GatewayConfig {
   ip: string;
+  scheme: "http" | "https";
 }
 
 export interface GatewayConfigOut {
   ip: string;
+  scheme: "http" | "https";
 }
 
 export interface TestResult {

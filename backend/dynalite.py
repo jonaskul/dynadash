@@ -12,8 +12,8 @@ class DynaliteError(Exception):
 class DynaliteClient:
     """Async HTTP client for the Dynalite Ethernet Gateway CGI API."""
 
-    def __init__(self, ip: str) -> None:
-        self.base_url = f"http://{ip}"
+    def __init__(self, ip: str, scheme: str = "http") -> None:
+        self.base_url = f"{scheme}://{ip}"
 
     # ------------------------------------------------------------------
     # Low-level helpers

@@ -73,7 +73,7 @@ class Poller:
             self._gateway_reachable = False
             return
 
-        client = DynaliteClient(ip=gateway["ip"])
+        client = DynaliteClient(ip=gateway["ip"], scheme=gateway.get("scheme", "http"))
         areas = _load_areas()
 
         for area in areas:

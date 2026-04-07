@@ -7,18 +7,21 @@ export default function SetupView() {
   const navigate = useNavigate();
 
   const [ip, setIp] = useState("");
+  const [https, setHttps] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; url: string } | null>(null);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const scheme = https ? "https" : "http";
+
   async function handleTest() {
     if (!ip) return;
     setTesting(true);
     setTestResult(null);
-    const url = `http://${ip}/GetDyNet.cgi?a=1&p=65535&j=255`;
+    const url = `${scheme}://${ip}/GetDyNet.cgi?a=1&p=65535&j=255`;
     try {
-      const result = await testGateway({ ip });
+      const result = await testGateway({ ip, scheme });
       setTestResult({ ...result, url });
     } catch (e) {
       setTestResult({ success: false, message: String(e), url });
@@ -35,7 +38,7 @@ export default function SetupView() {
     setSaving(true);
     setError(null);
     try {
-      await saveGateway({ ip });
+      await saveGateway({ ip, scheme });
       navigate("/areas");
     } catch (e) {
       setError(String(e));
@@ -74,12 +77,22 @@ export default function SetupView() {
               className="w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:border-electric-blue/60 focus:ring-1 focus:ring-electric-blue/30"
             />
           </div>
+
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={https}
+              onChange={(e) => setHttps(e.target.checked)}
+              className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue"
+            />
+            <span className="text-sm text-slate-300">Use HTTPS</span>
+          </label>
         </div>
 
         {/* Test connection result */}
         {testResult && (
           <div className="mt-4 rounded-lg bg-black/60 border border-white/10 p-3 font-mono text-xs space-y-1">
-            <div className="text-slate-400">
+            <div className="text-slate-400 break-all">
               <span className="text-green-400">$</span> GET {testResult.url}
             </div>
             <div className={testResult.success ? "text-green-400" : "text-red-400"}>

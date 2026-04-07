@@ -115,8 +115,8 @@ class DynaliteClient:
     # ------------------------------------------------------------------
 
     async def test_connection(self) -> None:
-        """Perform a minimal read to verify gateway reachability and credentials.
+        """Perform a minimal read to verify gateway reachability.
 
-        Raises DynaliteError if the gateway cannot be reached or rejects auth.
+        Raises DynaliteError if the gateway cannot be reached.
         """
-        await self._query({"a": 1, "p": 65535, "j": 255})
+        await self.get_preset(area=1)

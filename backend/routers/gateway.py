@@ -7,6 +7,8 @@ from typing import Optional
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+import httpx
+
 from dynalite import DynaliteClient, DynaliteError
 
 router = APIRouter(prefix="/api/gateway", tags=["gateway"])
@@ -84,6 +86,37 @@ async def test_gateway(body: GatewayConfigIn) -> TestResult:
         return TestResult(success=False, message=str(exc))
     except Exception as exc:
         return TestResult(success=False, message=f"Unexpected error: {exc}")
+
+
+@router.get("/probe/{area_id}")
+async def probe_gateway(area_id: int) -> dict:
+    """Return raw CGI responses for all thermostat queries on area_id — for debugging."""
+    data = _load()
+    if data is None:
+        return {"error": "No gateway configured"}
+    base = f"{data.get('scheme', 'http')}://{data['ip']}"
+    verify = data.get("verify_ssl", True)
+    headers: dict = {}
+    if data.get("username"):
+        import base64
+        creds = base64.b64encode(f"{data['username']}:{data.get('password','')}".encode()).decode()
+        headers["Authorization"] = f"Basic {creds}"
+
+    results: dict = {}
+    queries = {
+        "preset":      {"a": area_id, "p": ""},
+        "temperature": {"a": area_id, "tptr": 1, "j": 255},
+        "setpoint_tpsp": {"a": area_id, "tpsp": 1, "j": 255},
+        "setpoint_temperaturesetpoint": {"a": area_id, "temperaturesetpoint": 1, "j": 255},
+    }
+    async with httpx.AsyncClient(timeout=5.0, verify=verify) as client:
+        for name, params in queries.items():
+            try:
+                r = await client.get(f"{base}/GetDyNet.cgi", params=params, headers=headers)
+                results[name] = {"status": r.status_code, "body": r.text}
+            except Exception as e:
+                results[name] = {"error": str(e)}
+    return results
 
 
 @router.delete("", status_code=204)

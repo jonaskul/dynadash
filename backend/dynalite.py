@@ -101,7 +101,7 @@ class DynaliteClient:
                 await http.aclose()
 
     async def _set(self, params: dict[str, str | int]) -> dict[str, str]:
-        return await self._post("SetDyNet.cgi", params)
+        return await self._get("SetDyNet.cgi", params)
 
     async def _query(self, params: dict[str, str | int]) -> dict[str, str]:
         return await self._get("GetDyNet.cgi", params)

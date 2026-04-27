@@ -49,7 +49,8 @@ export default function ThermostatCard({ area, onUpdated }: Props) {
     try {
       await setSetpoint(area.id, value);
       onUpdated();
-    } catch {
+    } catch (err) {
+      console.error("setSetpoint failed:", err);
       setPendingSetpoint(null);
     }
   }

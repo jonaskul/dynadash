@@ -20,6 +20,78 @@ function buildVersion(): string {
 
 type TestResult = { success: boolean; message: string; url: string };
 
+interface EditFormProps {
+  ip: string; setIp: (v: string) => void;
+  https: boolean; setHttps: (v: boolean) => void;
+  verifySSL: boolean; setVerifySSL: (v: boolean) => void;
+  useAuth: boolean; setUseAuth: (v: boolean) => void;
+  username: string; setUsername: (v: string) => void;
+  password: string; setPassword: (v: string) => void;
+  testResult: TestResult | null;
+  error: string | null;
+  testing: boolean; saving: boolean;
+  onTest: () => void; onSave: () => void;
+  onCancel?: () => void;
+  showCancel?: boolean;
+}
+
+function EditForm({
+  ip, setIp, https, setHttps, verifySSL, setVerifySSL,
+  useAuth, setUseAuth, username, setUsername, password, setPassword,
+  testResult, error, testing, saving, onTest, onSave, onCancel, showCancel,
+}: EditFormProps) {
+  const inputCls = "w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:border-electric-blue/60 focus:ring-1 focus:ring-electric-blue/30";
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-400">IP Address</label>
+        <input type="text" className={inputCls} value={ip}
+          onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.50" />
+      </div>
+      <Checkbox checked={https} onChange={setHttps} label="Use HTTPS" />
+      <Checkbox checked={!verifySSL} onChange={(v) => setVerifySSL(!v)}
+        disabled={!https} label="Ignore certificate errors" />
+      <Checkbox checked={useAuth} onChange={setUseAuth} label="Require authentication" />
+      {useAuth && (
+        <div className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-400">Username</label>
+            <input type="text" className={inputCls} value={username}
+              onChange={(e) => setUsername(e.target.value)} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-400">
+              Password {showCancel && <span className="text-slate-500">(leave blank to keep)</span>}
+            </label>
+            <input type="password" className={inputCls} value={password}
+              onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+          </div>
+        </div>
+      )}
+      {testResult && <TerminalResult result={testResult} />}
+      {error && <p className="text-sm text-red-400">{error}</p>}
+      <div className="flex gap-3">
+        <button onClick={onTest} disabled={testing || !ip}
+          className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition disabled:opacity-40">
+          {testing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Test
+        </button>
+        <button onClick={onSave} disabled={saving || !ip}
+          className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-electric-blue py-2 text-sm font-semibold text-navy-900 hover:bg-electric-blue-light transition disabled:opacity-40">
+          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Save
+        </button>
+        {showCancel && onCancel && (
+          <button onClick={onCancel}
+            className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm text-slate-300 hover:text-white transition">
+            Cancel
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TerminalResult({ result }: { result: TestResult }) {
   return (
     <div className="rounded-lg bg-black/60 border border-white/10 p-3 font-mono text-xs space-y-1">
@@ -122,59 +194,12 @@ export default function SettingsView() {
     }
   }
 
-  const inputCls = "w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:border-electric-blue/60 focus:ring-1 focus:ring-electric-blue/30";
-
-  function EditForm({ showCancel }: { showCancel?: boolean }) {
-    return (
-      <div className="space-y-4">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-400">IP Address</label>
-          <input type="text" className={inputCls} value={ip}
-            onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.50" />
-        </div>
-        <Checkbox checked={https} onChange={setHttps} label="Use HTTPS" />
-        <Checkbox checked={!verifySSL} onChange={(v) => setVerifySSL(!v)}
-          disabled={!https} label="Ignore certificate errors" />
-        <Checkbox checked={useAuth} onChange={setUseAuth} label="Require authentication" />
-        {useAuth && (
-          <div className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-400">Username</label>
-              <input type="text" className={inputCls} value={username}
-                onChange={(e) => setUsername(e.target.value)} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-400">
-                Password {showCancel && <span className="text-slate-500">(leave blank to keep)</span>}
-              </label>
-              <input type="password" className={inputCls} value={password}
-                onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
-            </div>
-          </div>
-        )}
-        {testResult && <TerminalResult result={testResult} />}
-        {error && <p className="text-sm text-red-400">{error}</p>}
-        <div className="flex gap-3">
-          <button onClick={handleTest} disabled={testing || !ip}
-            className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition disabled:opacity-40">
-            {testing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Test
-          </button>
-          <button onClick={handleSave} disabled={saving || !ip}
-            className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-electric-blue py-2 text-sm font-semibold text-navy-900 hover:bg-electric-blue-light transition disabled:opacity-40">
-            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Save
-          </button>
-          {showCancel && (
-            <button onClick={() => setEditing(false)}
-              className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm text-slate-300 hover:text-white transition">
-              Cancel
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
+  const editFormProps: Omit<EditFormProps, "showCancel" | "onCancel"> = {
+    ip, setIp, https, setHttps, verifySSL, setVerifySSL,
+    useAuth, setUseAuth, username, setUsername, password, setPassword,
+    testResult, error, testing, saving,
+    onTest: handleTest, onSave: handleSave,
+  };
 
   return (
     <div className="mx-auto max-w-xl px-4 py-6 space-y-6">
@@ -190,7 +215,7 @@ export default function SettingsView() {
         ) : !gateway ? (
           <div className="space-y-4">
             <p className="text-sm text-slate-400">No gateway configured.</p>
-            <EditForm />
+            <EditForm {...editFormProps} />
           </div>
         ) : !editing ? (
           <div className="space-y-3">
@@ -224,7 +249,7 @@ export default function SettingsView() {
             </button>
           </div>
         ) : (
-          <EditForm showCancel />
+          <EditForm {...editFormProps} showCancel onCancel={() => setEditing(false)} />
         )}
       </div>
 

@@ -105,7 +105,6 @@ export default function ThermostatCard({ area, onUpdated }: Props) {
           setpoint={displaySetpoint}
           min={area.temp_min}
           max={area.temp_max}
-          disabled={stale}
           onChange={handleSetpointChange}
         />
       </div>

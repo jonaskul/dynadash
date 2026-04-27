@@ -86,8 +86,8 @@ class DynaliteClient:
 
     async def get_preset(self, area: int) -> Optional[int]:
         """Return the active preset number for *area*, or None if unknown."""
-        result = await self._query({"a": area, "p": 65535, "j": 255})
-        if "p" in result:
+        result = await self._query({"a": area, "p": ""})
+        if "p" in result and result["p"]:
             try:
                 return int(result["p"])
             except ValueError:

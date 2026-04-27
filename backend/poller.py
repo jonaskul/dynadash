@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from config import config
-from dynalite import DynaliteClient, DynaliteError
+from dynalite import DynaliteClient, DynaliteConnectionError, DynaliteError
 from influx import InfluxWriter
 from routers.settings import load_settings
 
@@ -99,9 +99,13 @@ class Poller:
                 else:
                     await self._poll_lighting(client, area_id, area_name, area)
                 self._gateway_reachable = True
+            except DynaliteConnectionError as exc:
+                logger.warning("Gateway unreachable polling area %d: %s", area_id, exc)
+                self._gateway_reachable = False
+                break
             except DynaliteError as exc:
                 logger.warning("Poll failed for area %d: %s", area_id, exc)
-                self._gateway_reachable = False
+                self._gateway_reachable = True
 
     async def _poll_lighting(
         self,

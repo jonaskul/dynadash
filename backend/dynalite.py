@@ -10,6 +10,10 @@ class DynaliteError(Exception):
     """Raised when communication with the Dynalite gateway fails."""
 
 
+class DynaliteConnectionError(DynaliteError):
+    """Raised when the gateway cannot be reached at the network level."""
+
+
 class DynaliteClient:
     """Async HTTP client for the Dynalite Ethernet Gateway CGI API."""
 
@@ -53,6 +57,8 @@ class DynaliteClient:
                 response = await client.get(url, params=params, headers=self._headers)
                 response.raise_for_status()
                 return self._parse_response(response.text)
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            raise DynaliteConnectionError(f"Cannot reach gateway: {exc}") from exc
         except httpx.HTTPError as exc:
             raise DynaliteError(f"Gateway request failed: {exc}") from exc
 
@@ -63,6 +69,8 @@ class DynaliteClient:
                 response = await client.post(url, params=params, headers=self._headers)
                 response.raise_for_status()
                 return self._parse_response(response.text)
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            raise DynaliteConnectionError(f"Cannot reach gateway: {exc}") from exc
         except httpx.HTTPError as exc:
             raise DynaliteError(f"Gateway request failed: {exc}") from exc
 

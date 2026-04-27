@@ -1,8 +1,10 @@
 import { Thermometer } from "lucide-react";
 import { useState } from "react";
-import { setSetpoint } from "../api/client";
+import { useQuery } from "@tanstack/react-query";
+import { getTemperatureHistory, setSetpoint } from "../api/client";
 import type { ThermostatAreaState } from "../api/types";
 import TemperaturePicker from "./TemperaturePicker";
+import { MiniTemperatureChart } from "./HistoryChart";
 
 interface Props {
   area: ThermostatAreaState;
@@ -32,6 +34,12 @@ function formatTime(date: Date) {
 export default function ThermostatCard({ area, onUpdated }: Props) {
   const [lastUpdated] = useState(() => new Date());
   const [pendingSetpoint, setPendingSetpoint] = useState<number | null>(null);
+
+  const { data: sparkData = [] } = useQuery({
+    queryKey: ["spark-temp", area.id],
+    queryFn: () => getTemperatureHistory(area.id, "24h"),
+    staleTime: 5 * 60 * 1000,
+  });
   const stale = !area.gateway_reachable;
 
   const displaySetpoint = pendingSetpoint ?? area.setpoint ?? null;
@@ -109,8 +117,16 @@ export default function ThermostatCard({ area, onUpdated }: Props) {
         />
       </div>
 
+      {/* Sparkline */}
+      <div className="mt-4 -mx-1">
+        {sparkData.length > 0
+          ? <MiniTemperatureChart data={sparkData} />
+          : <div className="h-[80px] rounded bg-white/5 animate-pulse" />
+        }
+      </div>
+
       {/* Footer */}
-      <div className="mt-4 flex items-center justify-between">
+      <div className="mt-3 flex items-center justify-between">
         {consumption > 0
           ? <span className="text-xs text-slate-500">{consumption} W</span>
           : <span />

@@ -62,7 +62,10 @@ class Poller:
 
     async def _loop(self) -> None:
         while True:
-            interval = load_settings().polling_interval_seconds
+            try:
+                interval = load_settings().polling_interval_seconds
+            except Exception:
+                interval = 60
             await asyncio.sleep(interval)
             try:
                 await self._poll_once()

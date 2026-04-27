@@ -24,7 +24,10 @@ def load_settings() -> AppSettings:
             return AppSettings(**json.loads(SETTINGS_FILE.read_text()))
         except Exception:
             pass
-    return AppSettings(polling_interval_seconds=app_config.polling_interval_seconds)
+    try:
+        return AppSettings(polling_interval_seconds=app_config.polling_interval_seconds)
+    except Exception:
+        return AppSettings()
 
 
 def save_settings(s: AppSettings) -> None:

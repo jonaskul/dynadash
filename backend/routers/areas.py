@@ -85,6 +85,14 @@ def _require_area(area_id: int, areas: list[dict[str, Any]]) -> dict[str, Any]:
 # ------------------------------------------------------------------
 
 
+@router.post("/poll-now")
+async def poll_now() -> dict[str, str]:
+    """Trigger an immediate poll cycle without waiting for the next scheduled interval."""
+    import asyncio
+    asyncio.create_task(poller._poll_once())
+    return {"status": "polling"}
+
+
 @router.get("")
 async def get_areas() -> list[dict[str, Any]]:
     """Return all areas with their current live state merged from the poller."""

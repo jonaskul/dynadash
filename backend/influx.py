@@ -33,7 +33,7 @@ class InfluxWriter:
             .tag("area_name", area_name)
             .field("temperature", temperature)
             .field("setpoint", setpoint)
-            .time(datetime.now(timezone.utc), WritePrecision.SECONDS)
+            .time(datetime.now(timezone.utc), WritePrecision.S)
         )
         with _client() as client:
             write_api = client.write_api(write_options=SYNCHRONOUS)
@@ -52,7 +52,7 @@ class InfluxWriter:
             .tag("area_name", area_name)
             .tag("channel", str(channel))
             .field("level", float(level))
-            .time(datetime.now(timezone.utc), WritePrecision.SECONDS)
+            .time(datetime.now(timezone.utc), WritePrecision.S)
         )
         with _client() as client:
             write_api = client.write_api(write_options=SYNCHRONOUS)
@@ -69,7 +69,7 @@ class InfluxWriter:
             .tag("area_id", str(area_id))
             .tag("area_name", area_name)
             .field("preset", preset)
-            .time(datetime.now(timezone.utc), WritePrecision.SECONDS)
+            .time(datetime.now(timezone.utc), WritePrecision.S)
         )
         with _client() as client:
             write_api = client.write_api(write_options=SYNCHRONOUS)

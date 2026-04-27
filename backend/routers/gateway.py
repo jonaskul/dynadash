@@ -125,6 +125,49 @@ async def probe_influx() -> dict:
         return {"error": "InfluxDB health check timed out", "url": app_config.influxdb.url}
 
 
+@router.get("/probe/influx/write-test")
+async def probe_influx_write_test() -> dict:
+    """Try writing a test point and reading it back to verify write permissions."""
+    import asyncio
+    from config import config as app_config
+
+    def _check() -> dict:
+        try:
+            from influxdb_client import InfluxDBClient, Point, WritePrecision
+            from influxdb_client.client.write_api import SYNCHRONOUS
+            from datetime import datetime, timezone
+            with InfluxDBClient(
+                url=app_config.influxdb.url,
+                token=app_config.influxdb.token,
+                org=app_config.influxdb.org,
+                timeout=8_000,
+            ) as client:
+                # Write a test point
+                write_api = client.write_api(write_options=SYNCHRONOUS)
+                point = (
+                    Point("_probe_test")
+                    .field("value", 1.0)
+                    .time(datetime.now(timezone.utc), WritePrecision.SECONDS)
+                )
+                write_api.write(bucket=app_config.influxdb.bucket, record=point)
+
+                # Read it back
+                tables = client.query_api().query(
+                    f'from(bucket: "{app_config.influxdb.bucket}") '
+                    f'|> range(start: -1m) '
+                    f'|> filter(fn: (r) => r._measurement == "_probe_test")'
+                )
+                count = sum(1 for t in tables for _ in t.records)
+                return {"write": "ok", "read_back_count": count}
+        except Exception as e:
+            return {"write": "failed", "error": str(e)}
+
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_check), timeout=10.0)
+    except asyncio.TimeoutError:
+        return {"error": "timed out"}
+
+
 @router.get("/probe/influx/data")
 async def probe_influx_data() -> dict:
     """Check how many records exist in InfluxDB across all measurements."""

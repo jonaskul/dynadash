@@ -33,7 +33,7 @@ export default function ThermostatCard({ area, onUpdated }: Props) {
   const [pendingSetpoint, setPendingSetpoint] = useState<number | null>(null);
   const stale = !area.gateway_reachable;
 
-  const displaySetpoint = pendingSetpoint ?? area.setpoint ?? area.temp_min;
+  const displaySetpoint = pendingSetpoint ?? area.setpoint ?? null;
 
   async function handleSetpointChange(value: number) {
     setPendingSetpoint(value);

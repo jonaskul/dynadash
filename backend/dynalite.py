@@ -116,7 +116,7 @@ class DynaliteClient:
 
     async def get_setpoint(self, area: int) -> Optional[float]:
         """Return the current temperature setpoint for *area*."""
-        result = await self._query({"a": area, "temperaturesetpoint": 1, "j": 255})
+        result = await self._query({"a": area, "tpsp": 1, "j": 255})
         if "tpsp" in result:
             try:
                 return float(result["tpsp"])

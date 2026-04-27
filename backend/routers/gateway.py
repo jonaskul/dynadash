@@ -88,6 +88,26 @@ async def test_gateway(body: GatewayConfigIn) -> TestResult:
         return TestResult(success=False, message=f"Unexpected error: {exc}")
 
 
+@router.get("/probe/influx")
+async def probe_influx() -> dict:
+    """Test InfluxDB connectivity and return bucket info."""
+    from influx import _client
+    from config import config as app_config
+    try:
+        with _client() as client:
+            health = client.health()
+            buckets_api = client.buckets_api()
+            bucket = buckets_api.find_bucket_by_name(app_config.influxdb.bucket)
+            return {
+                "health": health.status,
+                "bucket": bucket.name if bucket else None,
+                "bucket_found": bucket is not None,
+                "org": app_config.influxdb.org,
+            }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @router.get("/probe/{area_id}")
 async def probe_gateway(area_id: int) -> dict:
     """Return raw CGI responses for all thermostat queries on area_id — for debugging."""

@@ -126,13 +126,13 @@ class Poller:
                 try:
                     self._writer.write_level(area_id, area_name, ch, level)
                 except Exception as exc:
-                    logger.debug("InfluxDB write_level failed: %s", exc)
+                    logger.warning("InfluxDB write_level failed: %s", exc)
 
         if preset is not None:
             try:
                 self._writer.write_preset(area_id, area_name, preset)
             except Exception as exc:
-                logger.debug("InfluxDB write_preset failed: %s", exc)
+                logger.warning("InfluxDB write_preset failed: %s", exc)
 
         self._state[area_id] = {
             "type": "lighting",
@@ -154,7 +154,7 @@ class Poller:
             try:
                 self._writer.write_temperature(area_id, area_name, temperature, setpoint)
             except Exception as exc:
-                logger.debug("InfluxDB write_temperature failed: %s", exc)
+                logger.warning("InfluxDB write_temperature failed: %s", exc)
 
         self._state[area_id] = {
             "type": "thermostat",

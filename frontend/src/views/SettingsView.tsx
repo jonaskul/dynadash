@@ -290,21 +290,21 @@ function PollingIntervalSection() {
         <div className="flex items-center justify-between">
           <span className="text-xs text-slate-400">Interval</span>
           <span className="text-sm font-mono font-medium text-white tabular-nums">
-            {current} s
+            {Math.round(current / 60)} min
           </span>
         </div>
         <input
           type="range"
-          min={5}
-          max={300}
-          step={5}
-          value={current}
-          onChange={(e) => setValue(Number(e.target.value))}
+          min={1}
+          max={60}
+          step={1}
+          value={Math.round(current / 60)}
+          onChange={(e) => setValue(Number(e.target.value) * 60)}
           className="w-full accent-electric-blue"
         />
         <div className="flex justify-between text-xs text-slate-600">
-          <span>5 s</span>
-          <span>300 s</span>
+          <span>1 min</span>
+          <span>60 min</span>
         </div>
       </div>
 

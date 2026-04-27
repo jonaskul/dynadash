@@ -15,7 +15,7 @@ SETTINGS_FILE = DATA_DIR / "settings.json"
 
 
 class AppSettings(BaseModel):
-    polling_interval_seconds: int = Field(default=10, ge=5, le=300)
+    polling_interval_seconds: int = Field(default=60, ge=60, le=3600)
 
 
 def load_settings() -> AppSettings:

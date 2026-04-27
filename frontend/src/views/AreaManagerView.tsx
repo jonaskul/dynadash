@@ -54,7 +54,7 @@ function blankForm(): FormState {
     name: "",
     type: "thermostat",
     channels: "1",
-    presetRows: [],
+    presetRows: [{ key: "1", label: "On" }, { key: "4", label: "Off" }],
     temp_min: "16",
     temp_max: "30",
     watts: "0",

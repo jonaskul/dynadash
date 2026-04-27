@@ -52,7 +52,7 @@ function blankForm(): FormState {
   return {
     id: "",
     name: "",
-    type: "lighting",
+    type: "thermostat",
     channels: "1",
     presetRows: [],
     temp_min: "16",
@@ -162,7 +162,7 @@ function AreaForm({ initialForm, onSubmit, onCancel, submitLabel, idDisabled }: 
 
       <div>
         <label className="mb-1 block text-xs font-medium text-slate-400">Type</label>
-        <select className={inputCls} value={form.type}
+        <select className={inputCls + " [&>option]:bg-slate-900 [&>option]:text-white"} value={form.type}
           onChange={(e) => updateField("type", e.target.value as AreaType)}>
           <option value="lighting">Lighting</option>
           <option value="thermostat">Thermostat</option>

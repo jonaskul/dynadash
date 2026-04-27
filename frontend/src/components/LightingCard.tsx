@@ -106,9 +106,15 @@ export default function LightingCard({ area, onUpdated }: Props) {
       </div>
 
       {/* Footer */}
-      <p className="mt-4 text-right text-xs text-slate-600">
-        Updated {formatTime(lastUpdated)}
-      </p>
+      <div className="mt-4 flex items-center justify-between">
+        {area.watts > 0 ? (() => {
+          const levels = Array.from({ length: area.num_channels }, (_, i) => channelMap.get(i + 1) ?? 0);
+          const avg = levels.reduce((s, l) => s + l, 0) / levels.length;
+          const w = Math.round(area.watts * avg / 100);
+          return <span className="text-xs text-slate-500">{w} W</span>;
+        })() : <span />}
+        <p className="text-xs text-slate-600">Updated {formatTime(lastUpdated)}</p>
+      </div>
     </div>
   );
 }

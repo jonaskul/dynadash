@@ -21,6 +21,7 @@ class AreaConfigIn(BaseModel):
     presets: dict[str, str] = {}
     temp_min: Optional[float] = 16.0
     temp_max: Optional[float] = 30.0
+    watts: float = 0.0
     order: int = 0
 
     @field_validator("id")

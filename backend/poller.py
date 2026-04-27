@@ -50,7 +50,9 @@ class Poller:
     def is_gateway_reachable(self) -> bool:
         return self._gateway_reachable
 
-    def start(self) -> None:
+    async def start(self) -> None:
+        """Poll immediately on startup, then launch the background loop."""
+        await self._poll_once()
         self._task = asyncio.create_task(self._loop())
 
     def stop(self) -> None:
@@ -59,13 +61,13 @@ class Poller:
 
     async def _loop(self) -> None:
         while True:
+            await asyncio.sleep(config.polling_interval_seconds)
             try:
                 await self._poll_once()
             except asyncio.CancelledError:
                 break
             except Exception as exc:
                 logger.warning("Poller unexpected error: %s", exc)
-            await asyncio.sleep(config.polling_interval_seconds)
 
     async def _poll_once(self) -> None:
         gateway = _load_gateway()
@@ -137,6 +139,7 @@ class Poller:
     ) -> None:
         temperature = await client.get_temperature(area_id)
         setpoint = await client.get_setpoint(area_id)
+        preset = await client.get_preset(area_id)
 
         if temperature is not None and setpoint is not None:
             try:
@@ -146,6 +149,7 @@ class Poller:
 
         self._state[area_id] = {
             "type": "thermostat",
+            "current_preset": preset,
             "current_temp": temperature,
             "setpoint": setpoint,
         }

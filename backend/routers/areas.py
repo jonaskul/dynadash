@@ -107,14 +107,17 @@ async def get_areas() -> list[dict[str, Any]]:
         }
 
         if area["type"] == "thermostat":
+            merged["current_preset"] = live.get("current_preset")
             merged["current_temp"] = live.get("current_temp")
             merged["setpoint"] = live.get("setpoint")
             merged["temp_min"] = area.get("temp_min", 16.0)
             merged["temp_max"] = area.get("temp_max", 30.0)
+            merged["watts"] = area.get("watts", 0.0)
         else:
             merged["current_preset"] = live.get("current_preset")
             merged["channels"] = live.get("channels", [])
             merged["num_channels"] = area.get("channels", 1)
+            merged["watts"] = area.get("watts", 0.0)
 
         result.append(merged)
 

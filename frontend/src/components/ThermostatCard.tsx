@@ -25,7 +25,7 @@ function tempGradientClass(current: number | null): string {
 }
 
 function formatTime(date: Date) {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
 }
 
 export default function ThermostatCard({ area, onUpdated }: Props) {
@@ -41,13 +41,21 @@ export default function ThermostatCard({ area, onUpdated }: Props) {
       await setSetpoint(area.id, value);
       onUpdated();
     } catch {
-      // revert on error
       setPendingSetpoint(null);
     }
   }
 
   const colorClass = tempColor(area.current_temp, area.setpoint);
   const gradientClass = tempGradientClass(area.current_temp);
+
+  // Resolve active preset label
+  const presetLabel = area.current_preset !== null
+    ? (area.presets[String(area.current_preset)] ?? `Preset ${area.current_preset}`)
+    : null;
+
+  // Consumption: show watts if preset is active and watts configured
+  const isActive = area.current_preset !== null && area.current_preset !== 0;
+  const consumption = area.watts > 0 && isActive ? area.watts : 0;
 
   return (
     <div
@@ -64,11 +72,22 @@ export default function ThermostatCard({ area, onUpdated }: Props) {
           <Thermometer className={`h-5 w-5 ${colorClass}`} />
           <h2 className="text-base font-semibold text-white">{area.name}</h2>
         </div>
-        {stale && (
-          <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-400">
-            stale
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {presetLabel && (
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+              isActive
+                ? "bg-electric-blue/20 text-electric-blue"
+                : "bg-white/5 text-slate-500"
+            }`}>
+              {presetLabel}
+            </span>
+          )}
+          {stale && (
+            <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-400">
+              stale
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Temperature display */}
@@ -91,9 +110,13 @@ export default function ThermostatCard({ area, onUpdated }: Props) {
       </div>
 
       {/* Footer */}
-      <p className="mt-4 text-right text-xs text-slate-600">
-        Updated {formatTime(lastUpdated)}
-      </p>
+      <div className="mt-4 flex items-center justify-between">
+        {consumption > 0
+          ? <span className="text-xs text-slate-500">{consumption} W</span>
+          : <span />
+        }
+        <p className="text-xs text-slate-600">Updated {formatTime(lastUpdated)}</p>
+      </div>
     </div>
   );
 }

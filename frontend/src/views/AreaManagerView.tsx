@@ -30,6 +30,7 @@ interface FormState {
   presetRows: PresetRow[];
   temp_min: string;
   temp_max: string;
+  watts: string;
   order: string;
 }
 
@@ -42,6 +43,7 @@ function configToForm(cfg: AreaConfig): FormState {
     presetRows: presetsToRows(cfg.presets),
     temp_min: String(cfg.temp_min),
     temp_max: String(cfg.temp_max),
+    watts: String(cfg.watts ?? 0),
     order: String(cfg.order),
   };
 }
@@ -55,6 +57,7 @@ function blankForm(): FormState {
     presetRows: [],
     temp_min: "16",
     temp_max: "30",
+    watts: "0",
     order: "0",
   };
 }
@@ -68,6 +71,7 @@ function formToConfig(form: FormState): AreaConfig {
     presets: rowsToPresets(form.presetRows),
     temp_min: parseFloat(form.temp_min) || 16,
     temp_max: parseFloat(form.temp_max) || 30,
+    watts: parseFloat(form.watts) || 0,
     order: parseInt(form.order, 10) || 0,
   };
 }
@@ -187,6 +191,14 @@ function AreaForm({ initialForm, onSubmit, onCancel, submitLabel, idDisabled }: 
           </div>
         </div>
       )}
+
+      <div>
+        <label className="mb-1 block text-xs font-medium text-slate-400">
+          Rated wattage <span className="text-slate-500">(W, optional — used for consumption display)</span>
+        </label>
+        <input type="number" className={inputCls} value={form.watts}
+          onChange={(e) => updateField("watts", e.target.value)} min={0} step={10} placeholder="0" />
+      </div>
 
       {/* Presets */}
       <div>

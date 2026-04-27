@@ -36,6 +36,7 @@ export interface AreaConfig {
   presets: Record<string, string>; // preset number (string key) → label
   temp_min: number;
   temp_max: number;
+  watts: number;
   order: number;
 }
 
@@ -56,6 +57,7 @@ export interface LightingAreaState {
   channels: ChannelState[];
   num_channels: number;
   presets: Record<string, string>;
+  watts: number;
   gateway_reachable: boolean;
 }
 
@@ -63,11 +65,13 @@ export interface ThermostatAreaState {
   id: number;
   name: string;
   type: "thermostat";
+  current_preset: number | null;
   current_temp: number | null;
   setpoint: number | null;
   temp_min: number;
   temp_max: number;
   presets: Record<string, string>;
+  watts: number;
   gateway_reachable: boolean;
 }
 

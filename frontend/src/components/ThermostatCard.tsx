@@ -17,10 +17,11 @@ function tempColor(current: number | null, setpoint: number | null): string {
   return "text-green-400";
 }
 
-function tempGradientClass(current: number | null): string {
+function tempGradientClass(current: number | null, setpoint: number | null): string {
   if (current === null) return "from-slate-700 to-slate-600";
-  if (current < 18) return "from-blue-900/40 to-blue-800/20";
-  if (current > 24) return "from-orange-900/40 to-orange-800/20";
+  const ref = setpoint ?? 21;
+  if (current < ref - 2) return "from-blue-900/40 to-blue-800/20";
+  if (current > ref + 2) return "from-orange-900/40 to-orange-800/20";
   return "from-green-900/40 to-green-800/20";
 }
 
@@ -46,7 +47,7 @@ export default function ThermostatCard({ area, onUpdated }: Props) {
   }
 
   const colorClass = tempColor(area.current_temp, area.setpoint);
-  const gradientClass = tempGradientClass(area.current_temp);
+  const gradientClass = tempGradientClass(area.current_temp, area.setpoint);
 
   // Resolve active preset label
   const presetLabel = area.current_preset !== null

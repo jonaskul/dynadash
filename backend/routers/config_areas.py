@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any, Literal, Optional
 
+import asyncio
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, field_validator
 
@@ -66,11 +68,13 @@ async def list_areas() -> list[AreaConfigOut]:
 
 @router.post("", response_model=AreaConfigOut, status_code=201)
 async def create_area(body: AreaConfigIn) -> AreaConfigOut:
+    from poller import poller
     areas = _load_all()
     if any(a["id"] == body.id for a in areas):
         raise HTTPException(status_code=409, detail=f"Area {body.id} already exists")
     areas.append(body.model_dump())
     _save_all(areas)
+    asyncio.create_task(poller._poll_once())
     return AreaConfigOut(**body.model_dump())
 
 

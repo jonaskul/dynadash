@@ -86,26 +86,27 @@ class Poller:
         )
         areas = _load_areas()
 
-        for i, area in enumerate(areas):
-            if i > 0:
-                await asyncio.sleep(2)
-            area_id: int = area["id"]
-            area_name: str = area["name"]
-            area_type: str = area.get("type", "lighting")
+        async with client:
+            for i, area in enumerate(areas):
+                if i > 0:
+                    await asyncio.sleep(2)
+                area_id: int = area["id"]
+                area_name: str = area["name"]
+                area_type: str = area.get("type", "lighting")
 
-            try:
-                if area_type == "thermostat":
-                    await self._poll_thermostat(client, area_id, area_name)
-                else:
-                    await self._poll_lighting(client, area_id, area_name, area)
-                self._gateway_reachable = True
-            except DynaliteConnectionError as exc:
-                logger.warning("Gateway unreachable polling area %d: %s", area_id, exc)
-                self._gateway_reachable = False
-                break
-            except DynaliteError as exc:
-                logger.warning("Poll failed for area %d: %s", area_id, exc)
-                self._gateway_reachable = True
+                try:
+                    if area_type == "thermostat":
+                        await self._poll_thermostat(client, area_id, area_name)
+                    else:
+                        await self._poll_lighting(client, area_id, area_name, area)
+                    self._gateway_reachable = True
+                except DynaliteConnectionError as exc:
+                    logger.warning("Gateway unreachable polling area %d: %s", area_id, exc)
+                    self._gateway_reachable = False
+                    break
+                except DynaliteError as exc:
+                    logger.warning("Poll failed for area %d: %s", area_id, exc)
+                    self._gateway_reachable = True
 
     async def _poll_lighting(
         self,

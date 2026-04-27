@@ -15,7 +15,11 @@ class DynaliteConnectionError(DynaliteError):
 
 
 class DynaliteClient:
-    """Async HTTP client for the Dynalite Ethernet Gateway CGI API."""
+    """Async HTTP client for the Dynalite Ethernet Gateway CGI API.
+
+    Use as an async context manager to reuse a single TCP connection across
+    all requests in a poll cycle, avoiding repeated TLS handshakes.
+    """
 
     def __init__(
         self,
@@ -27,11 +31,20 @@ class DynaliteClient:
     ) -> None:
         self.base_url = f"{scheme}://{ip}"
         self._verify_ssl = verify_ssl
+        self._headers: dict[str, str] = {}
         if username:
             creds = base64.b64encode(f"{username}:{password}".encode()).decode()
-            self._headers: dict[str, str] = {"Authorization": f"Basic {creds}"}
-        else:
-            self._headers = {}
+            self._headers["Authorization"] = f"Basic {creds}"
+        self._http: Optional[httpx.AsyncClient] = None
+
+    async def __aenter__(self) -> "DynaliteClient":
+        self._http = httpx.AsyncClient(timeout=5.0, verify=self._verify_ssl)
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        if self._http:
+            await self._http.aclose()
+            self._http = None
 
     # ------------------------------------------------------------------
     # Low-level helpers
@@ -39,7 +52,6 @@ class DynaliteClient:
 
     @staticmethod
     def _parse_response(text: str) -> dict[str, str]:
-        """Parse a plain-text key=value response into a dict."""
         if text.strip() == ".":
             return {}
         result: dict[str, str] = {}
@@ -52,27 +64,41 @@ class DynaliteClient:
 
     async def _get(self, endpoint: str, params: dict[str, str | int]) -> dict[str, str]:
         url = f"{self.base_url}/{endpoint}"
+        http = self._http
+        close_after = False
+        if http is None:
+            http = httpx.AsyncClient(timeout=5.0, verify=self._verify_ssl)
+            close_after = True
         try:
-            async with httpx.AsyncClient(timeout=5.0, verify=self._verify_ssl) as client:
-                response = await client.get(url, params=params, headers=self._headers)
-                response.raise_for_status()
-                return self._parse_response(response.text)
+            response = await http.get(url, params=params, headers=self._headers)
+            response.raise_for_status()
+            return self._parse_response(response.text)
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise DynaliteConnectionError(f"Cannot reach gateway: {exc}") from exc
         except httpx.HTTPError as exc:
             raise DynaliteError(f"Gateway request failed: {exc}") from exc
+        finally:
+            if close_after:
+                await http.aclose()
 
     async def _post(self, endpoint: str, params: dict[str, str | int]) -> dict[str, str]:
         url = f"{self.base_url}/{endpoint}"
+        http = self._http
+        close_after = False
+        if http is None:
+            http = httpx.AsyncClient(timeout=5.0, verify=self._verify_ssl)
+            close_after = True
         try:
-            async with httpx.AsyncClient(timeout=5.0, verify=self._verify_ssl) as client:
-                response = await client.post(url, params=params, headers=self._headers)
-                response.raise_for_status()
-                return self._parse_response(response.text)
+            response = await http.post(url, params=params, headers=self._headers)
+            response.raise_for_status()
+            return self._parse_response(response.text)
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise DynaliteConnectionError(f"Cannot reach gateway: {exc}") from exc
         except httpx.HTTPError as exc:
             raise DynaliteError(f"Gateway request failed: {exc}") from exc
+        finally:
+            if close_after:
+                await http.aclose()
 
     async def _set(self, params: dict[str, str | int]) -> dict[str, str]:
         return await self._post("SetDyNet.cgi", params)
@@ -85,7 +111,6 @@ class DynaliteClient:
     # ------------------------------------------------------------------
 
     async def get_preset(self, area: int) -> Optional[int]:
-        """Return the active preset number for *area*, or None if unknown."""
         result = await self._query({"a": area, "p": ""})
         if "p" in result and result["p"]:
             try:
@@ -95,7 +120,6 @@ class DynaliteClient:
         return None
 
     async def get_channel_level(self, area: int, channel: int) -> Optional[float]:
-        """Return the level (0–100) for *channel* in *area*."""
         result = await self._query({"a": area, "c": channel, "j": 255})
         if "l" in result:
             try:
@@ -105,7 +129,6 @@ class DynaliteClient:
         return None
 
     async def get_temperature(self, area: int) -> Optional[float]:
-        """Return the current measured temperature for *area*."""
         result = await self._query({"a": area, "tptr": 1, "j": 255})
         if "t" in result:
             try:
@@ -115,7 +138,6 @@ class DynaliteClient:
         return None
 
     async def get_setpoint(self, area: int) -> Optional[float]:
-        """Return the current temperature setpoint for *area*."""
         result = await self._query({"a": area, "tpsp": 1, "j": 255})
         if "t" in result:
             try:
@@ -129,17 +151,14 @@ class DynaliteClient:
     # ------------------------------------------------------------------
 
     async def set_preset(self, area: int, preset: int, fade_ms: int = 1000) -> None:
-        """Activate *preset* in *area* with the given fade time."""
         await self._set({"a": area, "p": preset, "f": fade_ms, "j": 255})
 
     async def set_level(
         self, area: int, channel: int, level: float, fade_ms: int = 500
     ) -> None:
-        """Set *channel* in *area* to *level* percent."""
         await self._set({"a": area, "c": channel, "l": int(level), "f": fade_ms, "j": 255})
 
     async def set_setpoint(self, area: int, setpoint: float) -> None:
-        """Set the temperature setpoint for *area*."""
         sign = "+" if setpoint >= 0 else "-"
         formatted = f"{sign}{abs(setpoint):05.2f}"
         await self._set({"a": area, "tpsp": formatted, "j": 255})
@@ -149,8 +168,4 @@ class DynaliteClient:
     # ------------------------------------------------------------------
 
     async def test_connection(self) -> None:
-        """Perform a minimal read to verify gateway reachability.
-
-        Raises DynaliteError if the gateway cannot be reached.
-        """
         await self.get_preset(area=1)

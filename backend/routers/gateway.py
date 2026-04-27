@@ -125,6 +125,57 @@ async def probe_influx() -> dict:
         return {"error": "InfluxDB health check timed out", "url": app_config.influxdb.url}
 
 
+@router.get("/probe/influx/data")
+async def probe_influx_data() -> dict:
+    """Check how many records exist in InfluxDB across all measurements."""
+    import asyncio
+    from config import config as app_config
+
+    def _check() -> dict:
+        try:
+            from influxdb_client import InfluxDBClient
+            with InfluxDBClient(
+                url=app_config.influxdb.url,
+                token=app_config.influxdb.token,
+                org=app_config.influxdb.org,
+                timeout=8_000,
+            ) as client:
+                api = client.query_api()
+                flux = f"""
+from(bucket: "{app_config.influxdb.bucket}")
+  |> range(start: -7d)
+  |> group()
+  |> count()
+"""
+                tables = api.query(flux)
+                total = sum(r.get_value() for t in tables for r in t.records)
+                flux2 = f"""
+from(bucket: "{app_config.influxdb.bucket}")
+  |> range(start: -7d)
+  |> last()
+  |> keep(columns: ["_measurement", "_field", "_value", "_time", "area_id"])
+"""
+                tables2 = api.query(flux2)
+                samples = [
+                    {
+                        "measurement": r.get_measurement(),
+                        "field": r.get_field(),
+                        "value": r.get_value(),
+                        "time": str(r.get_time()),
+                        "area_id": r.values.get("area_id"),
+                    }
+                    for t in tables2 for r in t.records
+                ]
+                return {"total_records_7d": total, "last_samples": samples}
+        except Exception as e:
+            return {"error": str(e)}
+
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_check), timeout=10.0)
+    except asyncio.TimeoutError:
+        return {"error": "timed out"}
+
+
 @router.get("/probe/{area_id}")
 async def probe_gateway(area_id: int) -> dict:
     """Return raw CGI responses for all thermostat queries on area_id — for debugging."""

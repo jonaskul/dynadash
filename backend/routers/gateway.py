@@ -19,12 +19,15 @@ class GatewayConfigIn(BaseModel):
     ip: str
     scheme: str = "http"
     verify_ssl: bool = True
+    username: str = ""
+    password: str = ""
 
 
 class GatewayConfigOut(BaseModel):
     ip: str
     scheme: str = "http"
     verify_ssl: bool = True
+    username: str = ""
 
 
 class TestResult(BaseModel):
@@ -52,20 +55,28 @@ async def get_gateway() -> Optional[GatewayConfigOut]:
     data = _load()
     if data is None:
         return None
-    return GatewayConfigOut(ip=data["ip"], scheme=data.get("scheme", "http"), verify_ssl=data.get("verify_ssl", True))
+    return GatewayConfigOut(
+        ip=data["ip"],
+        scheme=data.get("scheme", "http"),
+        verify_ssl=data.get("verify_ssl", True),
+        username=data.get("username", ""),
+    )
 
 
 @router.post("", response_model=GatewayConfigOut)
 async def save_gateway(body: GatewayConfigIn) -> GatewayConfigOut:
     """Persist gateway connection settings."""
-    _save({"ip": body.ip, "scheme": body.scheme, "verify_ssl": body.verify_ssl})
-    return GatewayConfigOut(ip=body.ip, scheme=body.scheme, verify_ssl=body.verify_ssl)
+    _save({"ip": body.ip, "scheme": body.scheme, "verify_ssl": body.verify_ssl,
+           "username": body.username, "password": body.password})
+    return GatewayConfigOut(ip=body.ip, scheme=body.scheme, verify_ssl=body.verify_ssl,
+                            username=body.username)
 
 
 @router.post("/test", response_model=TestResult)
 async def test_gateway(body: GatewayConfigIn) -> TestResult:
     """Test connectivity to the given gateway without saving settings."""
-    client = DynaliteClient(ip=body.ip, scheme=body.scheme, verify_ssl=body.verify_ssl)
+    client = DynaliteClient(ip=body.ip, scheme=body.scheme, verify_ssl=body.verify_ssl,
+                            username=body.username, password=body.password)
     try:
         await client.test_connection()
         return TestResult(success=True, message="Connection successful.")

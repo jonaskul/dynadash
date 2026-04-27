@@ -33,6 +33,18 @@ function TerminalResult({ result }: { result: TestResult }) {
   );
 }
 
+function Checkbox({ checked, onChange, disabled, label }: {
+  checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; label: string;
+}) {
+  return (
+    <label className={`flex items-center gap-2.5 select-none ${disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer"}`}>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)}
+        disabled={disabled} className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue" />
+      <span className="text-sm text-slate-300">{label}</span>
+    </label>
+  );
+}
+
 export default function SettingsView() {
   const queryClient = useQueryClient();
 
@@ -45,6 +57,9 @@ export default function SettingsView() {
   const [ip, setIp] = useState("");
   const [https, setHttps] = useState(false);
   const [verifySSL, setVerifySSL] = useState(true);
+  const [useAuth, setUseAuth] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [editing, setEditing] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [testing, setTesting] = useState(false);
@@ -57,6 +72,9 @@ export default function SettingsView() {
     setIp(gateway?.ip ?? "");
     setHttps(gateway?.scheme === "https");
     setVerifySSL(gateway?.verify_ssl ?? true);
+    setUseAuth(!!(gateway?.username));
+    setUsername(gateway?.username ?? "");
+    setPassword("");
     setTestResult(null);
     setError(null);
     setEditing(true);
@@ -68,7 +86,8 @@ export default function SettingsView() {
     setTestResult(null);
     const url = `${scheme}://${ip}/GetDyNet.cgi?a=1&p=65535&j=255`;
     try {
-      const result = await testGateway({ ip, scheme, verify_ssl: verifySSL });
+      const result = await testGateway({ ip, scheme, verify_ssl: verifySSL,
+        username: useAuth ? username : "", password: useAuth ? password : "" });
       setTestResult({ ...result, url });
     } catch (e) {
       setTestResult({ success: false, message: String(e), url });
@@ -82,7 +101,8 @@ export default function SettingsView() {
     setSaving(true);
     setError(null);
     try {
-      await saveGateway({ ip, scheme, verify_ssl: verifySSL });
+      await saveGateway({ ip, scheme, verify_ssl: verifySSL,
+        username: useAuth ? username : "", password: useAuth ? password : "" });
       queryClient.invalidateQueries({ queryKey: ["gateway"] });
       setEditing(false);
     } catch (e) {
@@ -104,6 +124,58 @@ export default function SettingsView() {
 
   const inputCls = "w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition focus:border-electric-blue/60 focus:ring-1 focus:ring-electric-blue/30";
 
+  function EditForm({ showCancel }: { showCancel?: boolean }) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-400">IP Address</label>
+          <input type="text" className={inputCls} value={ip}
+            onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.50" />
+        </div>
+        <Checkbox checked={https} onChange={setHttps} label="Use HTTPS" />
+        <Checkbox checked={!verifySSL} onChange={(v) => setVerifySSL(!v)}
+          disabled={!https} label="Ignore certificate errors" />
+        <Checkbox checked={useAuth} onChange={setUseAuth} label="Require authentication" />
+        {useAuth && (
+          <div className="space-y-3 rounded-lg border border-white/10 bg-white/5 p-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">Username</label>
+              <input type="text" className={inputCls} value={username}
+                onChange={(e) => setUsername(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-400">
+                Password {showCancel && <span className="text-slate-500">(leave blank to keep)</span>}
+              </label>
+              <input type="password" className={inputCls} value={password}
+                onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+            </div>
+          </div>
+        )}
+        {testResult && <TerminalResult result={testResult} />}
+        {error && <p className="text-sm text-red-400">{error}</p>}
+        <div className="flex gap-3">
+          <button onClick={handleTest} disabled={testing || !ip}
+            className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition disabled:opacity-40">
+            {testing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Test
+          </button>
+          <button onClick={handleSave} disabled={saving || !ip}
+            className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-electric-blue py-2 text-sm font-semibold text-navy-900 hover:bg-electric-blue-light transition disabled:opacity-40">
+            {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            Save
+          </button>
+          {showCancel && (
+            <button onClick={() => setEditing(false)}
+              className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm text-slate-300 hover:text-white transition">
+              Cancel
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-xl px-4 py-6 space-y-6">
       <h1 className="text-xl font-semibold text-white">Settings</h1>
@@ -118,35 +190,7 @@ export default function SettingsView() {
         ) : !gateway ? (
           <div className="space-y-4">
             <p className="text-sm text-slate-400">No gateway configured.</p>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-400">IP Address</label>
-              <input type="text" className={inputCls} value={ip}
-                onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.50" />
-            </div>
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input type="checkbox" checked={https} onChange={(e) => setHttps(e.target.checked)}
-                className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue" />
-              <span className="text-sm text-slate-300">Use HTTPS</span>
-            </label>
-            <label className={`flex items-center gap-2.5 select-none ${https ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}>
-              <input type="checkbox" checked={!verifySSL} onChange={(e) => setVerifySSL(!e.target.checked)}
-                disabled={!https} className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue" />
-              <span className="text-sm text-slate-300">Ignore certificate errors</span>
-            </label>
-            {testResult && <TerminalResult result={testResult} />}
-            {error && <p className="text-sm text-red-400">{error}</p>}
-            <div className="flex gap-3">
-              <button onClick={handleTest} disabled={testing || !ip}
-                className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition disabled:opacity-40">
-                {testing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Test
-              </button>
-              <button onClick={handleSave} disabled={saving || !ip}
-                className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-electric-blue py-2 text-sm font-semibold text-navy-900 hover:bg-electric-blue-light transition disabled:opacity-40">
-                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Save
-              </button>
-            </div>
+            <EditForm />
           </div>
         ) : !editing ? (
           <div className="space-y-3">
@@ -167,6 +211,12 @@ export default function SettingsView() {
                   </span>
                 </div>
               )}
+              {gateway.username && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-400">Username</span>
+                  <span className="font-mono text-white">{gateway.username}</span>
+                </div>
+              )}
             </div>
             <button onClick={startEditing}
               className="w-full rounded-lg border border-white/15 bg-white/5 py-2 text-sm font-medium text-slate-300 hover:text-white hover:bg-white/10 transition">
@@ -174,41 +224,7 @@ export default function SettingsView() {
             </button>
           </div>
         ) : (
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-slate-400">IP Address</label>
-              <input type="text" className={inputCls} value={ip}
-                onChange={(e) => setIp(e.target.value)} placeholder="192.168.1.50" />
-            </div>
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input type="checkbox" checked={https} onChange={(e) => setHttps(e.target.checked)}
-                className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue" />
-              <span className="text-sm text-slate-300">Use HTTPS</span>
-            </label>
-            <label className={`flex items-center gap-2.5 select-none ${https ? "cursor-pointer" : "cursor-not-allowed opacity-40"}`}>
-              <input type="checkbox" checked={!verifySSL} onChange={(e) => setVerifySSL(!e.target.checked)}
-                disabled={!https} className="h-4 w-4 rounded border-white/20 bg-white/5 accent-electric-blue" />
-              <span className="text-sm text-slate-300">Ignore certificate errors</span>
-            </label>
-            {testResult && <TerminalResult result={testResult} />}
-            {error && <p className="text-sm text-red-400">{error}</p>}
-            <div className="flex gap-3">
-              <button onClick={handleTest} disabled={testing || !ip}
-                className="flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition disabled:opacity-40">
-                {testing && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Test
-              </button>
-              <button onClick={handleSave} disabled={saving || !ip}
-                className="flex-1 flex items-center justify-center gap-2 rounded-lg bg-electric-blue py-2 text-sm font-semibold text-navy-900 hover:bg-electric-blue-light transition disabled:opacity-40">
-                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Save
-              </button>
-              <button onClick={() => setEditing(false)}
-                className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm text-slate-300 hover:text-white transition">
-                Cancel
-              </button>
-            </div>
-          </div>
+          <EditForm showCancel />
         )}
       </div>
 
@@ -216,9 +232,7 @@ export default function SettingsView() {
       {gateway && !isLoading && (
         <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-5 space-y-3">
           <h2 className="text-sm font-semibold text-red-400">Danger Zone</h2>
-          <p className="text-xs text-slate-400">
-            Removes the gateway IP address from configuration.
-          </p>
+          <p className="text-xs text-slate-400">Removes the gateway IP address from configuration.</p>
           <button onClick={handleReset}
             className="flex items-center gap-2 rounded-lg border border-red-500/40 px-4 py-2 text-sm font-medium text-red-400 hover:bg-red-500/10 transition">
             <Trash2 className="h-4 w-4" />

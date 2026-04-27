@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from typing import Optional
 
 import httpx
@@ -12,9 +13,21 @@ class DynaliteError(Exception):
 class DynaliteClient:
     """Async HTTP client for the Dynalite Ethernet Gateway CGI API."""
 
-    def __init__(self, ip: str, scheme: str = "http", verify_ssl: bool = True) -> None:
+    def __init__(
+        self,
+        ip: str,
+        scheme: str = "http",
+        verify_ssl: bool = True,
+        username: str = "",
+        password: str = "",
+    ) -> None:
         self.base_url = f"{scheme}://{ip}"
         self._verify_ssl = verify_ssl
+        if username:
+            creds = base64.b64encode(f"{username}:{password}".encode()).decode()
+            self._headers: dict[str, str] = {"Authorization": f"Basic {creds}"}
+        else:
+            self._headers = {}
 
     # ------------------------------------------------------------------
     # Low-level helpers
@@ -23,6 +36,8 @@ class DynaliteClient:
     @staticmethod
     def _parse_response(text: str) -> dict[str, str]:
         """Parse a plain-text key=value response into a dict."""
+        if text.strip() == ".":
+            return {}
         result: dict[str, str] = {}
         for line in text.strip().splitlines():
             line = line.strip()
@@ -35,14 +50,24 @@ class DynaliteClient:
         url = f"{self.base_url}/{endpoint}"
         try:
             async with httpx.AsyncClient(timeout=5.0, verify=self._verify_ssl) as client:
-                response = await client.get(url, params=params)
+                response = await client.get(url, params=params, headers=self._headers)
+                response.raise_for_status()
+                return self._parse_response(response.text)
+        except httpx.HTTPError as exc:
+            raise DynaliteError(f"Gateway request failed: {exc}") from exc
+
+    async def _post(self, endpoint: str, params: dict[str, str | int]) -> dict[str, str]:
+        url = f"{self.base_url}/{endpoint}"
+        try:
+            async with httpx.AsyncClient(timeout=5.0, verify=self._verify_ssl) as client:
+                response = await client.post(url, params=params, headers=self._headers)
                 response.raise_for_status()
                 return self._parse_response(response.text)
         except httpx.HTTPError as exc:
             raise DynaliteError(f"Gateway request failed: {exc}") from exc
 
     async def _set(self, params: dict[str, str | int]) -> dict[str, str]:
-        return await self._get("SetDyNet.cgi", params)
+        return await self._post("SetDyNet.cgi", params)
 
     async def _query(self, params: dict[str, str | int]) -> dict[str, str]:
         return await self._get("GetDyNet.cgi", params)

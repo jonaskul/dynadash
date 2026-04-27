@@ -6,12 +6,15 @@ export interface GatewayConfig {
   ip: string;
   scheme: "http" | "https";
   verify_ssl: boolean;
+  username?: string;
+  password?: string;
 }
 
 export interface GatewayConfigOut {
   ip: string;
   scheme: "http" | "https";
   verify_ssl: boolean;
+  username?: string;
 }
 
 export interface TestResult {

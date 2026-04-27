@@ -90,22 +90,39 @@ async def test_gateway(body: GatewayConfigIn) -> TestResult:
 
 @router.get("/probe/influx")
 async def probe_influx() -> dict:
-    """Test InfluxDB connectivity and return bucket info."""
-    from influx import _client
+    """Test InfluxDB connectivity — runs in a thread to avoid blocking."""
+    import asyncio
     from config import config as app_config
-    try:
-        with _client() as client:
-            health = client.health()
-            buckets_api = client.buckets_api()
-            bucket = buckets_api.find_bucket_by_name(app_config.influxdb.bucket)
+
+    def _check() -> dict:
+        try:
+            from influxdb_client import InfluxDBClient
+            with InfluxDBClient(
+                url=app_config.influxdb.url,
+                token=app_config.influxdb.token,
+                org=app_config.influxdb.org,
+                timeout=4_000,
+            ) as client:
+                health = client.health()
+                bucket = client.buckets_api().find_bucket_by_name(app_config.influxdb.bucket)
+                return {
+                    "health": health.status,
+                    "bucket": bucket.name if bucket else None,
+                    "bucket_found": bucket is not None,
+                    "url": app_config.influxdb.url,
+                    "org": app_config.influxdb.org,
+                }
+        except Exception as e:
             return {
-                "health": health.status,
-                "bucket": bucket.name if bucket else None,
-                "bucket_found": bucket is not None,
+                "error": str(e),
+                "url": app_config.influxdb.url,
                 "org": app_config.influxdb.org,
             }
-    except Exception as e:
-        return {"error": str(e)}
+
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(_check), timeout=6.0)
+    except asyncio.TimeoutError:
+        return {"error": "InfluxDB health check timed out", "url": app_config.influxdb.url}
 
 
 @router.get("/probe/{area_id}")

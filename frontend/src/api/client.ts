@@ -113,6 +113,18 @@ export async function deleteArea(areaId: number): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// App settings
+// ---------------------------------------------------------------------------
+
+export async function getAppSettings(): Promise<{ polling_interval_seconds: number }> {
+  return request<{ polling_interval_seconds: number }>("GET", "/settings");
+}
+
+export async function saveAppSettings(s: { polling_interval_seconds: number }): Promise<{ polling_interval_seconds: number }> {
+  return request<{ polling_interval_seconds: number }>("POST", "/settings", s);
+}
+
+// ---------------------------------------------------------------------------
 // History
 // ---------------------------------------------------------------------------
 

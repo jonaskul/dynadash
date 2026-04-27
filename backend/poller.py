@@ -9,6 +9,7 @@ from typing import Any, Optional
 from config import config
 from dynalite import DynaliteClient, DynaliteError
 from influx import InfluxWriter
+from routers.settings import load_settings
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,8 @@ class Poller:
 
     async def _loop(self) -> None:
         while True:
-            await asyncio.sleep(config.polling_interval_seconds)
+            interval = load_settings().polling_interval_seconds
+            await asyncio.sleep(interval)
             try:
                 await self._poll_once()
             except asyncio.CancelledError:
@@ -84,7 +86,9 @@ class Poller:
         )
         areas = _load_areas()
 
-        for area in areas:
+        for i, area in enumerate(areas):
+            if i > 0:
+                await asyncio.sleep(2)
             area_id: int = area["id"]
             area_name: str = area["name"]
             area_type: str = area.get("type", "lighting")

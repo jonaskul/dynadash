@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { deleteGateway, getGateway, saveGateway, testGateway } from "../api/client";
+import { deleteGateway, getAppSettings, getGateway, saveAppSettings, saveGateway, testGateway } from "../api/client";
 
 declare const __BUILD_TIME__: string;
 
@@ -241,10 +241,83 @@ export default function SettingsView() {
         </div>
       )}
 
+      {/* Polling interval */}
+      <PollingIntervalSection />
+
       {/* Version */}
       <div className="flex justify-end">
         <span className="text-xs font-mono text-slate-600">{buildVersion()}</span>
       </div>
+    </div>
+  );
+}
+
+function PollingIntervalSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ["app-settings"],
+    queryFn: getAppSettings,
+    staleTime: 60_000,
+  });
+
+  const [value, setValue] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const current = value ?? data?.polling_interval_seconds ?? 10;
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await saveAppSettings({ polling_interval_seconds: current });
+      queryClient.invalidateQueries({ queryKey: ["app-settings"] });
+      setValue(null);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const isDirty = value !== null && value !== data?.polling_interval_seconds;
+
+  return (
+    <div className="rounded-xl border border-white/10 bg-navy-800/60 p-6 backdrop-blur-sm space-y-4">
+      <h2 className="text-sm font-semibold text-slate-300">Polling Interval</h2>
+      <p className="text-xs text-slate-500">
+        How often to read state from all areas. Each area is polled 2 s apart to avoid
+        overloading the gateway.
+      </p>
+
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-slate-400">Interval</span>
+          <span className="text-sm font-mono font-medium text-white tabular-nums">
+            {current} s
+          </span>
+        </div>
+        <input
+          type="range"
+          min={5}
+          max={300}
+          step={5}
+          value={current}
+          onChange={(e) => setValue(Number(e.target.value))}
+          className="w-full accent-electric-blue"
+        />
+        <div className="flex justify-between text-xs text-slate-600">
+          <span>5 s</span>
+          <span>300 s</span>
+        </div>
+      </div>
+
+      {isDirty && (
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-2 rounded-lg bg-electric-blue px-4 py-2 text-sm font-semibold text-navy-900 hover:bg-electric-blue-light transition disabled:opacity-40"
+        >
+          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Save
+        </button>
+      )}
     </div>
   );
 }

@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from poller import poller
-from routers import areas, config_areas, gateway, history
+from routers import areas, config_areas, gateway, history, settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -43,6 +43,7 @@ app.include_router(gateway.router)
 app.include_router(areas.router)
 app.include_router(config_areas.router)
 app.include_router(history.router)
+app.include_router(settings.router)
 
 
 @app.get("/api/health")

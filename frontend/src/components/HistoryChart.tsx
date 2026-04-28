@@ -89,34 +89,6 @@ export function TemperatureChart({ data }: TempChartProps) {
 }
 
 // ---------------------------------------------------------------------------
-// Mini temperature sparkline (for use inside thermostat cards)
-// ---------------------------------------------------------------------------
-
-export function MiniTemperatureChart({ data }: TempChartProps) {
-  const { use24h, lightMode } = useUISettings();
-  const tooltipStyle = lightMode
-    ? { background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11 }
-    : { background: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, fontSize: 11 };
-
-  return (
-    <ResponsiveContainer width="100%" height={80}>
-      <LineChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-        <Tooltip
-          contentStyle={tooltipStyle}
-          labelFormatter={(v) => formatTime(v as string, use24h)}
-          formatter={(value: number, name: string) => [
-            `${value.toFixed(1)} °C`,
-            name === "temperature" ? "Temp" : "Setpoint",
-          ]}
-        />
-        <Line type="monotone" dataKey="temperature" stroke="#38bdf8" strokeWidth={1.5} dot={false} isAnimationActive={false} />
-        <Line type="monotone" dataKey="setpoint" stroke="#fbbf24" strokeWidth={1} strokeDasharray="4 2" dot={false} isAnimationActive={false} />
-      </LineChart>
-    </ResponsiveContainer>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Level (lighting) chart
 // ---------------------------------------------------------------------------
 

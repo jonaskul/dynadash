@@ -2,14 +2,45 @@ import { Thermometer } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getTemperatureHistory, setSetpoint } from "../api/client";
-import type { ThermostatAreaState } from "../api/types";
+import type { ThermostatAreaState, TemperaturePoint } from "../api/types";
 import { useClockFormat } from "../context/UISettings";
 import TemperaturePicker from "./TemperaturePicker";
-import { MiniTemperatureChart } from "./HistoryChart";
 
 interface Props {
   area: ThermostatAreaState;
   onUpdated: () => void;
+}
+
+function TempStats({ data }: { data: TemperaturePoint[] }) {
+  const temps = data.map(d => d.temperature).filter((t): t is number => t !== null);
+  if (temps.length === 0) return null;
+
+  const min = Math.min(...temps);
+  const max = Math.max(...temps);
+
+  const lastTime = new Date(data[data.length - 1].time).getTime();
+  const oneHourAgo = lastTime - 60 * 60 * 1000;
+  const pastPoint = [...data].reverse().find(d => new Date(d.time).getTime() <= oneHourAgo);
+  const currentTemp = data[data.length - 1].temperature;
+  const pastTemp = pastPoint?.temperature ?? null;
+
+  let trend: string | null = null;
+  if (currentTemp !== null && pastTemp !== null) {
+    const delta = currentTemp - pastTemp;
+    const arrow = Math.abs(delta) < 0.1 ? "→" : delta > 0 ? "↑" : "↓";
+    const sign = delta >= 0 ? "+" : "";
+    trend = `${arrow} ${sign}${delta.toFixed(1)}° siste t`;
+  }
+
+  return (
+    <div className="mt-3 flex items-center justify-between text-xs">
+      <span className="font-mono text-slate-500 dark:text-slate-400">
+        {min.toFixed(1)}° – {max.toFixed(1)}°
+        <span className="ml-1 text-slate-400 dark:text-slate-600">24t</span>
+      </span>
+      {trend && <span className="text-slate-500 dark:text-slate-400">{trend}</span>}
+    </div>
+  );
 }
 
 function tempColor(current: number | null, setpoint: number | null): string {
@@ -114,13 +145,7 @@ export default function ThermostatCard({ area, onUpdated }: Props) {
         />
       </div>
 
-      {/* Sparkline */}
-      <div className="mt-4 -mx-1">
-        {sparkData.length > 0
-          ? <MiniTemperatureChart data={sparkData} />
-          : <div className="h-[80px] rounded bg-slate-100 animate-pulse dark:bg-white/5" />
-        }
-      </div>
+      {sparkData.length > 1 && <TempStats data={sparkData} />}
 
       {/* Footer */}
       <div className="mt-3 flex items-center justify-between">

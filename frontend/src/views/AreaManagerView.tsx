@@ -9,7 +9,6 @@ interface PresetRow {
   label: string;
 }
 
-
 function presetsToRows(presets: Record<string, string>): PresetRow[] {
   return Object.entries(presets).map(([key, label]) => ({ key, label }));
 }
@@ -136,33 +135,33 @@ function AreaForm({ initialForm, onSubmit, onCancel, submitLabel, idDisabled }: 
     }
   }
 
-  const inputCls = "w-full rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-500 outline-none focus:border-electric-blue/50 focus:ring-1 focus:ring-electric-blue/20";
+  const inputCls = "w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 outline-none focus:border-electric-blue/50 focus:ring-1 focus:ring-electric-blue/20 dark:border-white/15 dark:bg-white/5 dark:text-white dark:placeholder-slate-500";
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-400">Area ID</label>
+          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Area ID</label>
           <input type="number" className={inputCls} value={form.id}
             onChange={(e) => updateField("id", e.target.value)}
             disabled={idDisabled} min={1} max={65535} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-400">Display Order</label>
+          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Display Order</label>
           <input type="number" className={inputCls} value={form.order}
             onChange={(e) => updateField("order", e.target.value)} min={0} />
         </div>
       </div>
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-slate-400">Name</label>
+        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Name</label>
         <input type="text" className={inputCls} value={form.name}
           onChange={(e) => updateField("name", e.target.value)} placeholder="Living Room" />
       </div>
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-slate-400">Type</label>
-        <select className={inputCls + " [&>option]:bg-slate-900 [&>option]:text-white"} value={form.type}
+        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Type</label>
+        <select className={inputCls + " [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-white"} value={form.type}
           onChange={(e) => updateField("type", e.target.value as AreaType)}>
           <option value="lighting">Lighting</option>
           <option value="thermostat">Thermostat</option>
@@ -171,7 +170,7 @@ function AreaForm({ initialForm, onSubmit, onCancel, submitLabel, idDisabled }: 
 
       {form.type === "lighting" && (
         <div>
-          <label className="mb-1 block text-xs font-medium text-slate-400">Number of Channels</label>
+          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Number of Channels</label>
           <input type="number" className={inputCls} value={form.channels}
             onChange={(e) => updateField("channels", e.target.value)} min={1} max={32} />
         </div>
@@ -180,12 +179,12 @@ function AreaForm({ initialForm, onSubmit, onCancel, submitLabel, idDisabled }: 
       {form.type === "thermostat" && (
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-400">Temp Min (°C)</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Temp Min (°C)</label>
             <input type="number" className={inputCls} value={form.temp_min}
               onChange={(e) => updateField("temp_min", e.target.value)} step={0.5} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-slate-400">Temp Max (°C)</label>
+            <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">Temp Max (°C)</label>
             <input type="number" className={inputCls} value={form.temp_max}
               onChange={(e) => updateField("temp_max", e.target.value)} step={0.5} />
           </div>
@@ -193,8 +192,8 @@ function AreaForm({ initialForm, onSubmit, onCancel, submitLabel, idDisabled }: 
       )}
 
       <div>
-        <label className="mb-1 block text-xs font-medium text-slate-400">
-          Rated wattage <span className="text-slate-500">(W, optional — used for consumption display)</span>
+        <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+          Rated wattage <span className="text-slate-400 dark:text-slate-500">(W, optional — used for consumption display)</span>
         </label>
         <input type="number" className={inputCls} value={form.watts}
           onChange={(e) => updateField("watts", e.target.value)} min={0} step={10} placeholder="0" />
@@ -203,9 +202,9 @@ function AreaForm({ initialForm, onSubmit, onCancel, submitLabel, idDisabled }: 
       {/* Presets */}
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <label className="text-xs font-medium text-slate-400">Presets</label>
+          <label className="text-xs font-medium text-slate-500 dark:text-slate-400">Presets</label>
           <button type="button" onClick={addPresetRow}
-            className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-xs text-slate-300 hover:text-white hover:border-electric-blue/30 transition">
+            className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-600 hover:text-slate-900 hover:border-electric-blue/30 transition dark:border-white/10 dark:bg-white/5 dark:text-slate-300 dark:hover:text-white">
             <Plus className="h-3 w-3" /> Add
           </button>
         </div>
@@ -214,12 +213,12 @@ function AreaForm({ initialForm, onSubmit, onCancel, submitLabel, idDisabled }: 
             <div key={i} className="flex items-center gap-2">
               <input type="text" placeholder="Preset #" value={row.key}
                 onChange={(e) => updatePresetRow(i, "key", e.target.value)}
-                className="w-24 rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-white placeholder-slate-500 outline-none focus:border-electric-blue/50" />
+                className="w-24 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-electric-blue/50 dark:border-white/15 dark:bg-white/5 dark:text-white dark:placeholder-slate-500" />
               <input type="text" placeholder="Label" value={row.label}
                 onChange={(e) => updatePresetRow(i, "label", e.target.value)}
-                className="flex-1 rounded-md border border-white/15 bg-white/5 px-2 py-1.5 text-xs text-white placeholder-slate-500 outline-none focus:border-electric-blue/50" />
+                className="flex-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-900 placeholder-slate-400 outline-none focus:border-electric-blue/50 dark:border-white/15 dark:bg-white/5 dark:text-white dark:placeholder-slate-500" />
               <button type="button" onClick={() => removePresetRow(i)}
-                className="rounded-md p-1 text-slate-500 hover:text-red-400 transition">
+                className="rounded-md p-1 text-slate-400 hover:text-red-500 transition dark:text-slate-500 dark:hover:text-red-400">
                 <X className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -227,7 +226,7 @@ function AreaForm({ initialForm, onSubmit, onCancel, submitLabel, idDisabled }: 
         </div>
       </div>
 
-      {formError && <p className="text-sm text-red-400">{formError}</p>}
+      {formError && <p className="text-sm text-red-500 dark:text-red-400">{formError}</p>}
 
       <div className="flex gap-3 pt-2">
         <button type="submit" disabled={submitting}
@@ -235,7 +234,7 @@ function AreaForm({ initialForm, onSubmit, onCancel, submitLabel, idDisabled }: 
           {submitLabel}
         </button>
         <button type="button" onClick={onCancel}
-          className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm text-slate-300 hover:text-white transition">
+          className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm text-slate-600 hover:text-slate-900 transition dark:border-white/15 dark:bg-white/5 dark:text-slate-300 dark:hover:text-white">
           Cancel
         </button>
       </div>
@@ -283,7 +282,7 @@ export default function AreaManagerView() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-white">Area Manager</h1>
+        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Area Manager</h1>
         {!showAdd && (
           <button onClick={() => { setShowAdd(true); setEditingId(null); }}
             className="flex items-center gap-2 rounded-lg bg-electric-blue px-4 py-2 text-sm font-semibold text-navy-900 hover:bg-electric-blue-light transition">
@@ -294,7 +293,7 @@ export default function AreaManagerView() {
 
       {/* Add form */}
       {showAdd && (
-        <div className="rounded-xl border border-electric-blue/30 bg-navy-800/60 p-5 backdrop-blur-sm animate-fade-in">
+        <div className="rounded-xl border border-electric-blue/30 bg-white p-5 animate-fade-in dark:bg-navy-800/60 dark:backdrop-blur-sm">
           <h2 className="mb-4 text-sm font-semibold text-electric-blue">New Area</h2>
           <AreaForm
             initialForm={blankForm()}
@@ -306,7 +305,7 @@ export default function AreaManagerView() {
       )}
 
       {deleteError && (
-        <p className="text-sm text-red-400">{deleteError}</p>
+        <p className="text-sm text-red-500 dark:text-red-400">{deleteError}</p>
       )}
 
       {/* Area list */}
@@ -315,14 +314,14 @@ export default function AreaManagerView() {
           <div className="h-7 w-7 animate-spin rounded-full border-2 border-electric-blue border-t-transparent" />
         </div>
       ) : areas.length === 0 && !showAdd ? (
-        <div className="rounded-xl border border-dashed border-white/10 py-12 text-center">
+        <div className="rounded-xl border border-dashed border-slate-300 py-12 text-center dark:border-white/10">
           <p className="text-slate-500">No areas yet. Click "Add Area" to get started.</p>
         </div>
       ) : (
         <div className="space-y-3">
           {areas.map((area) => (
             <div key={area.id}
-              className="rounded-xl border border-white/10 bg-navy-800/60 p-4 backdrop-blur-sm animate-fade-in">
+              className="rounded-xl border border-slate-200 bg-white p-4 animate-fade-in dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm">
               {editingId === area.id ? (
                 <>
                   <h3 className="mb-3 text-sm font-semibold text-electric-blue">
@@ -339,7 +338,7 @@ export default function AreaManagerView() {
               ) : (
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="font-medium text-white">{area.name}</p>
+                    <p className="font-medium text-slate-900 dark:text-white">{area.name}</p>
                     <p className="text-xs text-slate-500">
                       ID {area.id} · {area.type === "lighting" ? `Lighting · ${area.channels} ch` : "Thermostat"}
                       {Object.keys(area.presets).length > 0 &&
@@ -348,11 +347,11 @@ export default function AreaManagerView() {
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <button onClick={() => { setEditingId(area.id); setShowAdd(false); }}
-                      className="rounded-md p-1.5 text-slate-400 hover:text-white hover:bg-white/10 transition">
+                      className="rounded-md p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition dark:hover:text-white dark:hover:bg-white/10">
                       <Edit2 className="h-4 w-4" />
                     </button>
                     <button onClick={() => handleDelete(area.id)}
-                      className="rounded-md p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition">
+                      className="rounded-md p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 transition dark:hover:text-red-400 dark:hover:bg-red-500/10">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>

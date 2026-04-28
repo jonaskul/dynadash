@@ -35,7 +35,7 @@ export default function LevelSlider({ channel, level, disabled = false, onChange
 
   return (
     <div className="flex items-center gap-3">
-      <span className="w-16 shrink-0 text-xs text-slate-400">CH {channel}</span>
+      <span className="w-16 shrink-0 text-xs text-slate-500 dark:text-slate-400">CH {channel}</span>
       <input
         type="range"
         min={0}
@@ -43,9 +43,9 @@ export default function LevelSlider({ channel, level, disabled = false, onChange
         value={localLevel}
         disabled={disabled}
         onChange={handleChange}
-        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-white/10 accent-electric-blue disabled:cursor-not-allowed disabled:opacity-40"
+        className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-electric-blue disabled:cursor-not-allowed disabled:opacity-40 dark:bg-white/10"
       />
-      <span className="w-10 shrink-0 text-right text-sm font-mono text-slate-300">
+      <span className="w-10 shrink-0 text-right text-sm font-mono text-slate-600 dark:text-slate-300">
         {Math.round(localLevel)}%
       </span>
     </div>

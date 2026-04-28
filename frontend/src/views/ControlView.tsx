@@ -38,10 +38,10 @@ export default function ControlView() {
   if (areas.length === 0) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-12">
-        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-white/10 py-16 text-center">
-          <LayoutGrid className="h-10 w-10 text-slate-600" />
+        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-slate-300 py-16 text-center dark:border-white/10">
+          <LayoutGrid className="h-10 w-10 text-slate-400 dark:text-slate-600" />
           <div>
-            <p className="text-lg font-medium text-slate-300">No areas configured</p>
+            <p className="text-lg font-medium text-slate-700 dark:text-slate-300">No areas configured</p>
             <p className="mt-1 text-sm text-slate-500">
               Add your first area to start controlling your lights and HVAC.
             </p>

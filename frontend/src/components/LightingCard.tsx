@@ -2,6 +2,7 @@ import { Lightbulb, PowerOff } from "lucide-react";
 import { useState } from "react";
 import { setLevel, setPreset } from "../api/client";
 import type { LightingAreaState } from "../api/types";
+import { useClockFormat } from "../context/UISettings";
 import LevelSlider from "./LevelSlider";
 import PresetButton from "./PresetButton";
 
@@ -12,13 +13,10 @@ interface Props {
 
 const OFF_PRESET = 65520;
 
-function formatTime(date: Date) {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-}
-
 export default function LightingCard({ area, onUpdated }: Props) {
   const [lastUpdated] = useState(() => new Date());
   const [busy, setBusy] = useState(false);
+  const formatTime = useClockFormat();
   const stale = !area.gateway_reachable;
 
   async function handlePreset(preset: number) {
@@ -45,13 +43,13 @@ export default function LightingCard({ area, onUpdated }: Props) {
     ([key]) => key !== String(OFF_PRESET)
   );
 
-  // Build channel state map for quick lookup
   const channelMap = new Map(area.channels.map((c) => [c.channel, c.level]));
 
   return (
     <div
       className={`
-        rounded-xl border border-white/10 bg-navy-800/60 p-5 backdrop-blur-sm
+        rounded-xl border border-slate-200 bg-white p-5
+        dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm
         transition-opacity duration-300 animate-fade-in
         ${stale ? "opacity-60" : ""}
       `}
@@ -59,11 +57,11 @@ export default function LightingCard({ area, onUpdated }: Props) {
       {/* Header */}
       <div className="mb-4 flex items-start justify-between">
         <div className="flex items-center gap-2">
-          <Lightbulb className="h-5 w-5 text-amber-400" />
-          <h2 className="text-base font-semibold text-white">{area.name}</h2>
+          <Lightbulb className="h-5 w-5 text-amber-500 dark:text-amber-400" />
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white">{area.name}</h2>
         </div>
         {stale && (
-          <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-400">
+          <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-600 dark:text-amber-400">
             stale
           </span>
         )}
@@ -84,7 +82,7 @@ export default function LightingCard({ area, onUpdated }: Props) {
           <button
             onClick={() => handlePreset(OFF_PRESET)}
             disabled={busy || stale}
-            className="flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-sm font-medium text-slate-400 transition-all hover:border-red-500/50 hover:text-red-400 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-500 transition-all hover:border-red-300 hover:text-red-500 disabled:opacity-40 disabled:cursor-not-allowed dark:border-white/10 dark:bg-white/5 dark:text-slate-400 dark:hover:border-red-500/50 dark:hover:text-red-400"
           >
             <PowerOff className="h-3.5 w-3.5" />
             Off
@@ -111,9 +109,9 @@ export default function LightingCard({ area, onUpdated }: Props) {
           const levels = Array.from({ length: area.num_channels }, (_, i) => channelMap.get(i + 1) ?? 0);
           const avg = levels.reduce((s, l) => s + l, 0) / levels.length;
           const w = Math.round(area.watts * avg / 100);
-          return <span className="text-xs text-slate-500">{w} W</span>;
+          return <span className="text-xs text-slate-400 dark:text-slate-500">{w} W</span>;
         })() : <span />}
-        <p className="text-xs text-slate-600">Updated {formatTime(lastUpdated)}</p>
+        <p className="text-xs text-slate-400 dark:text-slate-600">Updated {formatTime(lastUpdated)}</p>
       </div>
     </div>
   );

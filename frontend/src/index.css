@@ -10,18 +10,27 @@
   }
 
   body {
+    background-color: #f1f5f9;
+    color: #0f172a;
+  }
+
+  .dark body {
     background-color: #0a1120;
     color: #f8fafc;
   }
 
-  /* Custom range input styling */
+  /* Range input — light mode */
   input[type="range"] {
     -webkit-appearance: none;
     appearance: none;
     height: 6px;
     border-radius: 9999px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.1);
     outline: none;
+  }
+
+  .dark input[type="range"] {
+    background: rgba(255, 255, 255, 0.1);
   }
 
   input[type="range"]::-webkit-slider-thumb {
@@ -51,6 +60,11 @@
   }
 
   input[type="range"]:disabled::-webkit-slider-thumb {
+    background: #94a3b8;
+    box-shadow: none;
+  }
+
+  .dark input[type="range"]:disabled::-webkit-slider-thumb {
     background: #475569;
     box-shadow: none;
   }
@@ -58,6 +72,6 @@
 
 @layer utilities {
   .glass {
-    @apply border border-white/10 bg-navy-800/60 backdrop-blur-sm;
+    @apply border border-slate-200 bg-white/80 backdrop-blur-sm dark:border-white/10 dark:bg-navy-800/60;
   }
 }

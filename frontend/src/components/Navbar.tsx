@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Zap } from "lucide-react";
-import { getGateway } from "../api/client";
-import { getAreas } from "../api/client";
+import { Moon, Sun, Zap } from "lucide-react";
+import { getGateway, getAreas } from "../api/client";
+import { useUISettings, useClockFormat } from "../context/UISettings";
 
 function LiveClock() {
   const [time, setTime] = useState(() => new Date());
+  const formatTime = useClockFormat();
 
   useEffect(() => {
     const id = setInterval(() => setTime(new Date()), 1000);
@@ -14,8 +15,8 @@ function LiveClock() {
   }, []);
 
   return (
-    <span className="text-sm font-mono text-slate-400 tabular-nums">
-      {time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })}
+    <span className="text-sm font-mono tabular-nums text-slate-500 dark:text-slate-400">
+      {formatTime(time)}
     </span>
   );
 }
@@ -40,7 +41,7 @@ function GatewayDot() {
   const isConfigured = gw !== null && gw !== undefined;
 
   const color = !isConfigured
-    ? "bg-slate-500"
+    ? "bg-slate-400 dark:bg-slate-500"
     : reachable
     ? "bg-green-400"
     : "bg-red-500";
@@ -54,8 +55,21 @@ function GatewayDot() {
   return (
     <div className="flex items-center gap-1.5" title={label}>
       <span className={`h-2.5 w-2.5 rounded-full ${color} shadow-lg`} />
-      <span className="hidden sm:inline text-xs text-slate-400">{label}</span>
+      <span className="hidden sm:inline text-xs text-slate-500 dark:text-slate-400">{label}</span>
     </div>
+  );
+}
+
+function ThemeToggle() {
+  const { lightMode, setLightMode } = useUISettings();
+  return (
+    <button
+      onClick={() => setLightMode(!lightMode)}
+      title={lightMode ? "Switch to dark mode" : "Switch to light mode"}
+      className="flex h-7 w-7 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-white/10 dark:hover:text-white"
+    >
+      {lightMode ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+    </button>
   );
 }
 
@@ -70,12 +84,12 @@ export default function Navbar() {
   const location = useLocation();
 
   return (
-    <nav className="sticky top-0 z-50 border-b border-white/10 bg-navy-900/80 backdrop-blur-md">
+    <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/90 backdrop-blur-md dark:border-white/10 dark:bg-navy-900/80">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
         {/* Wordmark */}
         <Link to="/" className="flex items-center gap-2 select-none">
           <Zap className="h-5 w-5 text-electric-blue" fill="currentColor" />
-          <span className="text-lg font-bold tracking-widest text-white">
+          <span className="text-lg font-bold tracking-widest text-slate-900 dark:text-white">
             DYNA<span className="text-electric-blue">DASH</span>
           </span>
         </Link>
@@ -90,8 +104,8 @@ export default function Navbar() {
                 to={to}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   active
-                    ? "bg-electric-blue/20 text-electric-blue"
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                    ? "bg-electric-blue/15 text-electric-blue dark:bg-electric-blue/20"
+                    : "text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white"
                 }`}
               >
                 {label}
@@ -101,14 +115,15 @@ export default function Navbar() {
         </div>
 
         {/* Right side */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <LiveClock />
+          <ThemeToggle />
           <GatewayDot />
         </div>
       </div>
 
       {/* Mobile nav */}
-      <div className="sm:hidden flex border-t border-white/5 px-2 pb-2">
+      <div className="sm:hidden flex border-t border-slate-100 px-2 pb-2 dark:border-white/5">
         {NAV_LINKS.map(({ to, label }) => {
           const active = to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
           return (
@@ -118,7 +133,7 @@ export default function Navbar() {
               className={`flex-1 rounded-md py-1.5 text-center text-xs font-medium transition-colors ${
                 active
                   ? "text-electric-blue"
-                  : "text-slate-500 hover:text-white"
+                  : "text-slate-400 hover:text-slate-900 dark:text-slate-500 dark:hover:text-white"
               }`}
             >
               {label}

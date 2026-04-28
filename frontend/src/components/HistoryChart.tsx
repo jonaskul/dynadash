@@ -11,26 +11,12 @@ import {
   YAxis,
 } from "recharts";
 import type { LevelPoint, TemperaturePoint } from "../api/types";
+import { useUISettings } from "../context/UISettings";
 
-// ---------------------------------------------------------------------------
-// Shared chart styling
-// ---------------------------------------------------------------------------
-
-const GRID_COLOR = "rgba(255,255,255,0.06)";
-const AXIS_COLOR = "rgba(255,255,255,0.3)";
-
-function formatTime(iso: string): string {
+function formatTime(iso: string, use24h: boolean): string {
   const d = new Date(iso);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: !use24h });
 }
-
-const tooltipStyle = {
-  backgroundColor: "#1e293b",
-  border: "1px solid rgba(255,255,255,0.1)",
-  borderRadius: 8,
-  color: "#f8fafc",
-  fontSize: 12,
-};
 
 // ---------------------------------------------------------------------------
 // Temperature chart
@@ -41,21 +27,28 @@ interface TempChartProps {
 }
 
 export function TemperatureChart({ data }: TempChartProps) {
+  const { use24h, lightMode } = useUISettings();
+  const gridColor = lightMode ? "rgba(0,0,0,0.07)" : "rgba(255,255,255,0.06)";
+  const axisColor = lightMode ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.3)";
+  const tooltipStyle = lightMode
+    ? { backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 8, color: "#0f172a", fontSize: 12 }
+    : { backgroundColor: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#f8fafc", fontSize: 12 };
+
   return (
     <ResponsiveContainer width="100%" height={280}>
       <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-        <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" />
+        <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
         <XAxis
           dataKey="time"
-          tickFormatter={formatTime}
-          tick={{ fill: AXIS_COLOR, fontSize: 11 }}
-          axisLine={{ stroke: GRID_COLOR }}
+          tickFormatter={(v) => formatTime(v as string, use24h)}
+          tick={{ fill: axisColor, fontSize: 11 }}
+          axisLine={{ stroke: gridColor }}
           tickLine={false}
           interval="preserveStartEnd"
         />
         <YAxis
-          tick={{ fill: AXIS_COLOR, fontSize: 11 }}
-          axisLine={{ stroke: GRID_COLOR }}
+          tick={{ fill: axisColor, fontSize: 11 }}
+          axisLine={{ stroke: gridColor }}
           tickLine={false}
           unit="°"
           domain={["auto", "auto"]}
@@ -63,14 +56,14 @@ export function TemperatureChart({ data }: TempChartProps) {
         />
         <Tooltip
           contentStyle={tooltipStyle}
-          labelFormatter={(v) => formatTime(v as string)}
+          labelFormatter={(v) => formatTime(v as string, use24h)}
           formatter={(value: number, name: string) => [
             `${value.toFixed(1)}°C`,
             name === "temperature" ? "Temperature" : "Setpoint",
           ]}
         />
         <Legend
-          wrapperStyle={{ color: AXIS_COLOR, fontSize: 12 }}
+          wrapperStyle={{ color: axisColor, fontSize: 12 }}
           formatter={(value) => (value === "temperature" ? "Temperature" : "Setpoint")}
         />
         <Line
@@ -100,12 +93,17 @@ export function TemperatureChart({ data }: TempChartProps) {
 // ---------------------------------------------------------------------------
 
 export function MiniTemperatureChart({ data }: TempChartProps) {
+  const { use24h, lightMode } = useUISettings();
+  const tooltipStyle = lightMode
+    ? { background: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 6, fontSize: 11 }
+    : { background: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, fontSize: 11 };
+
   return (
     <ResponsiveContainer width="100%" height={80}>
       <LineChart data={data} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
         <Tooltip
-          contentStyle={{ background: "#0f172a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, fontSize: 11 }}
-          labelFormatter={(v) => formatTime(v as string)}
+          contentStyle={tooltipStyle}
+          labelFormatter={(v) => formatTime(v as string, use24h)}
           formatter={(value: number, name: string) => [
             `${value.toFixed(1)} °C`,
             name === "temperature" ? "Temp" : "Setpoint",
@@ -127,6 +125,13 @@ interface LevelChartProps {
 }
 
 export function LevelChart({ data }: LevelChartProps) {
+  const { use24h, lightMode } = useUISettings();
+  const gridColor = lightMode ? "rgba(0,0,0,0.07)" : "rgba(255,255,255,0.06)";
+  const axisColor = lightMode ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.3)";
+  const tooltipStyle = lightMode
+    ? { backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 8, color: "#0f172a", fontSize: 12 }
+    : { backgroundColor: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#f8fafc", fontSize: 12 };
+
   return (
     <ResponsiveContainer width="100%" height={280}>
       <AreaChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
@@ -136,18 +141,18 @@ export function LevelChart({ data }: LevelChartProps) {
             <stop offset="95%" stopColor="#38bdf8" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid stroke={GRID_COLOR} strokeDasharray="3 3" />
+        <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
         <XAxis
           dataKey="time"
-          tickFormatter={formatTime}
-          tick={{ fill: AXIS_COLOR, fontSize: 11 }}
-          axisLine={{ stroke: GRID_COLOR }}
+          tickFormatter={(v) => formatTime(v as string, use24h)}
+          tick={{ fill: axisColor, fontSize: 11 }}
+          axisLine={{ stroke: gridColor }}
           tickLine={false}
           interval="preserveStartEnd"
         />
         <YAxis
-          tick={{ fill: AXIS_COLOR, fontSize: 11 }}
-          axisLine={{ stroke: GRID_COLOR }}
+          tick={{ fill: axisColor, fontSize: 11 }}
+          axisLine={{ stroke: gridColor }}
           tickLine={false}
           unit="%"
           domain={[0, 100]}
@@ -155,7 +160,7 @@ export function LevelChart({ data }: LevelChartProps) {
         />
         <Tooltip
           contentStyle={tooltipStyle}
-          labelFormatter={(v) => formatTime(v as string)}
+          labelFormatter={(v) => formatTime(v as string, use24h)}
           formatter={(value: number) => [`${value.toFixed(0)}%`, "Level"]}
         />
         <Area

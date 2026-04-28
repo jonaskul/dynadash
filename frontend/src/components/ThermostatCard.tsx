@@ -29,7 +29,7 @@ function TempStats({ data }: { data: TemperaturePoint[] }) {
     const delta = currentTemp - pastTemp;
     const arrow = Math.abs(delta) < 0.1 ? "→" : delta > 0 ? "↑" : "↓";
     const sign = delta >= 0 ? "+" : "";
-    trend = `${arrow} ${sign}${delta.toFixed(1)}° siste t`;
+    trend = `${arrow} ${sign}${delta.toFixed(1)}° last hr`;
   }
 
   return (

@@ -19,6 +19,8 @@ export default function TemperaturePicker({ setpoint, min, max, disabled = false
 
   function increment() {
     const base = setpoint ?? min;
+    // If current setpoint is below the allowed minimum, jump straight to min
+    if (base < min) { onChange(min); return; }
     const next = Math.min(max, Math.round((base + STEP) * 10) / 10);
     if (next !== setpoint) onChange(next);
   }

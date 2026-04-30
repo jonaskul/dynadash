@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, Loader2, Moon, Sun, Trash2 } from "lucide-react";
-import { useState } from "react";
-import { deleteGateway, getAppSettings, getGateway, saveAppSettings, saveGateway, testGateway } from "../api/client";
+import { Clock, Download, Loader2, Moon, Sun, Trash2, Upload } from "lucide-react";
+import { useRef, useState } from "react";
+import { deleteGateway, getAppSettings, getGateway, importBackup, saveAppSettings, saveGateway, testGateway } from "../api/client";
 import { useUISettings } from "../context/UISettings";
 
 declare const __BUILD_TIME__: string;
@@ -185,6 +185,129 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 }
 
 // ---------------------------------------------------------------------------
+// Backup section
+// ---------------------------------------------------------------------------
+
+type ExportRange = "7d" | "30d" | "90d" | "all";
+
+const EXPORT_RANGES: { value: ExportRange; label: string }[] = [
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "90d", label: "Last 90 days" },
+  { value: "all", label: "All time" },
+];
+
+const selectCls = "rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-electric-blue/60 focus:ring-1 focus:ring-electric-blue/30 dark:border-white/15 dark:bg-white/5 dark:text-slate-300";
+
+function BackupSection() {
+  const [range, setRange] = useState<ExportRange>("7d");
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function handleExport() {
+    setExporting(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const res = await fetch(`/api/backup/export?range=${range}`);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `dynadash-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const data = JSON.parse(await file.text());
+      const result = await importBackup(data);
+      const pts = result.temperature_points + result.level_points;
+      setMessage(`Imported ${result.areas_imported} areas and ${pts} history points.`);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setImporting(false);
+      e.target.value = "";
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-4 dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm">
+      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Import / Export</h2>
+
+      {/* Export */}
+      <div>
+        <p className="mb-2 text-xs text-slate-500">Download a backup of all areas and history data.</p>
+        <div className="flex items-center gap-2">
+          <select
+            value={range}
+            onChange={(e) => setRange(e.target.value as ExportRange)}
+            className={selectCls}
+          >
+            {EXPORT_RANGES.map((r) => (
+              <option key={r.value} value={r.value}>{r.label}</option>
+            ))}
+          </select>
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center gap-2 rounded-lg bg-electric-blue px-4 py-2 text-sm font-semibold text-navy-900 hover:bg-electric-blue-light transition disabled:opacity-40"
+          >
+            {exporting
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Download className="h-4 w-4" />}
+            Export
+          </button>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 dark:border-white/5" />
+
+      {/* Import */}
+      <div>
+        <p className="mb-2 text-xs text-slate-500">Restore from a backup file. Replaces all areas and merges history.</p>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json"
+          onChange={handleImport}
+          className="hidden"
+        />
+        <button
+          onClick={() => fileRef.current?.click()}
+          disabled={importing}
+          className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition disabled:opacity-40 dark:border-white/15 dark:bg-white/5 dark:text-slate-300 dark:hover:text-white dark:hover:bg-white/10"
+        >
+          {importing
+            ? <Loader2 className="h-4 w-4 animate-spin" />
+            : <Upload className="h-4 w-4" />}
+          Import backup
+        </button>
+      </div>
+
+      {message && <p className="text-xs text-green-600 dark:text-green-400">{message}</p>}
+      {error && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main settings view
 // ---------------------------------------------------------------------------
 
@@ -327,6 +450,9 @@ export default function SettingsView() {
           <EditForm {...editFormProps} showCancel onCancel={() => setEditing(false)} />
         )}
       </div>
+
+      {/* Import / Export */}
+      <BackupSection />
 
       {/* Danger zone */}
       {gateway && !isLoading && (

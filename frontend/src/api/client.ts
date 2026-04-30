@@ -148,3 +148,19 @@ export async function getLevelHistory(
     `/history/level?area_id=${areaId}&channel=${channel}&range=${range}`
   );
 }
+
+// ---------------------------------------------------------------------------
+// Backup
+// ---------------------------------------------------------------------------
+
+export async function importBackup(data: unknown): Promise<{
+  areas_imported: number;
+  temperature_points: number;
+  level_points: number;
+}> {
+  return request<{ areas_imported: number; temperature_points: number; level_points: number }>(
+    "POST",
+    "/backup/import",
+    data
+  );
+}

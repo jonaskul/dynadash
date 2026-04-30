@@ -151,3 +151,105 @@ from(bucket: "{config.influxdb.bucket}")
                     }
                 )
         return results
+
+    def export_temperature(self, range_str: str) -> list[dict[str, Any]]:
+        """Return all temperature records across all areas for backup."""
+        start = "0" if range_str == "all" else f"-{range_str}"
+        flux = f"""
+from(bucket: "{config.influxdb.bucket}")
+  |> range(start: {start})
+  |> filter(fn: (r) => r._measurement == "temperature")
+  |> filter(fn: (r) => r._field == "temperature" or r._field == "setpoint")
+  |> pivot(rowKey: ["_time", "area_id", "area_name"], columnKey: ["_field"], valueColumn: "_value")
+  |> sort(columns: ["_time"])
+"""
+        with _client() as client:
+            tables = client.query_api().query(flux)
+        return [
+            {
+                "time": r.get_time().isoformat() if r.get_time() else None,
+                "area_id": r.values.get("area_id"),
+                "area_name": r.values.get("area_name"),
+                "temperature": r.values.get("temperature"),
+                "setpoint": r.values.get("setpoint"),
+            }
+            for table in tables
+            for r in table.records
+        ]
+
+    def export_channel_level(self, range_str: str) -> list[dict[str, Any]]:
+        """Return all channel level records across all areas for backup."""
+        start = "0" if range_str == "all" else f"-{range_str}"
+        flux = f"""
+from(bucket: "{config.influxdb.bucket}")
+  |> range(start: {start})
+  |> filter(fn: (r) => r._measurement == "channel_level")
+  |> filter(fn: (r) => r._field == "level")
+  |> sort(columns: ["_time"])
+"""
+        with _client() as client:
+            tables = client.query_api().query(flux)
+        return [
+            {
+                "time": r.get_time().isoformat() if r.get_time() else None,
+                "area_id": r.values.get("area_id"),
+                "area_name": r.values.get("area_name"),
+                "channel": r.values.get("channel"),
+                "level": r.get_value(),
+            }
+            for table in tables
+            for r in table.records
+        ]
+
+
+class InfluxImporter:
+    """Write historical records back to InfluxDB, preserving original timestamps."""
+
+    def import_temperature(self, records: list[dict[str, Any]]) -> int:
+        points = []
+        for r in records:
+            t = r.get("temperature")
+            sp = r.get("setpoint")
+            if t is None and sp is None:
+                continue
+            p = (
+                Point("temperature")
+                .tag("area_id", str(r["area_id"]))
+                .tag("area_name", r["area_name"])
+                .time(
+                    datetime.fromisoformat(r["time"].replace("Z", "+00:00")),
+                    WritePrecision.S,
+                )
+            )
+            if t is not None:
+                p = p.field("temperature", float(t))
+            if sp is not None:
+                p = p.field("setpoint", float(sp))
+            points.append(p)
+        if points:
+            with _client() as client:
+                client.write_api(write_options=SYNCHRONOUS).write(
+                    bucket=config.influxdb.bucket, record=points
+                )
+        return len(points)
+
+    def import_channel_level(self, records: list[dict[str, Any]]) -> int:
+        points = [
+            Point("channel_level")
+            .tag("area_id", str(r["area_id"]))
+            .tag("area_name", r["area_name"])
+            .tag("channel", str(r["channel"]))
+            .field("level", float(r["level"]))
+            .time(
+                datetime.fromisoformat(r["time"].replace("Z", "+00:00")),
+                WritePrecision.S,
+            )
+            for r in records
+            if r.get("level") is not None
+        ]
+        if points:
+            with _client() as client:
+                client.write_api(write_options=SYNCHRONOUS).write(
+                    bucket=config.influxdb.bucket, record=points
+                )
+        return len(points)

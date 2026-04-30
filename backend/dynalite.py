@@ -159,9 +159,9 @@ class DynaliteClient:
         await self._set({"a": area, "c": channel, "l": int(level), "f": fade_ms, "j": 255})
 
     async def set_setpoint(self, area: int, setpoint: float) -> None:
-        sign = "+" if setpoint >= 0 else "-"
-        formatted = f"{sign}{abs(setpoint):05.2f}"
-        await self._set({"a": area, "tpsp": formatted, "j": 255})
+        # httpx URL-encodes '+' as '%2B' which the gateway cannot parse;
+        # omitting the sign for positive values matches the documented format.
+        await self._set({"a": area, "tpsp": f"{setpoint:.2f}", "j": 255})
 
     # ------------------------------------------------------------------
     # Connection test

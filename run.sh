@@ -270,6 +270,8 @@ pct exec "$CTID" -- bash -c "
 ExecStart=
 ExecStart=-/sbin/agetty --autologin root --noclear --keep-baud tty%I 115200,38400,9600 \$TERM
 UNIT
+  systemctl daemon-reload
+  systemctl restart 'container-getty@1' || true
 "
 msg_ok "Root auto-login configured"
 

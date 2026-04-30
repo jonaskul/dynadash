@@ -35,7 +35,7 @@ The script will:
 4. Configure **root auto-login** on the PVE console
 5. Wait for DHCP and DNS before proceeding
 6. Clone DynaDash and run the full installer inside the container
-7. Print the dashboard URL when done
+7. Generate a random root password, install SSH, and print the dashboard URL + SSH credentials when done
 
 **Default container settings:**
 
@@ -97,7 +97,20 @@ pct enter <CTID>
 /opt/dynadash/update.sh
 ```
 
-This pulls the latest code, reinstalls Python deps, rebuilds the frontend, and restarts all services.
+`update.sh` will:
+1. Check if there is anything new to pull — exits immediately with "Already up to date" if not
+2. Back up `backend/data/` before pulling, then restore it after
+3. Reinstall Python deps, rebuild the frontend, and redeploy
+4. Validate `backend/main.py` syntax before restarting the service
+5. Wait up to 20 seconds for the backend to come back up
+
+Pass `--force` to rebuild and restart even when the code is already current:
+
+```bash
+/opt/dynadash/update.sh --force
+```
+
+All output is also appended to `/var/log/dynadash-update.log`.
 
 ---
 

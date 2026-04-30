@@ -4,12 +4,12 @@ A professional home automation dashboard for Dynalite lighting and HVAC (thermos
 
 ## Features
 
-- **Control view** — live lighting preset and channel-level control; thermostat setpoint adjustment with active preset badge and watt consumption display
-- **History view** — temperature/setpoint line charts and lighting level area charts (1h / 6h / 24h / 7d)
+- **Control view** — live lighting preset and channel-level control; thermostat setpoint adjustment with active preset badge, watt consumption, and 24h min/max + trend indicator
+- **History view** — all areas shown as stacked charts (sorted by Display Order, then alphabetically); temperature/setpoint line charts and lighting level area charts (1h / 6h / 24h / 7d)
 - **Area Manager** — add, edit, and delete Dynalite areas from the UI (no config files required); supports rated wattage per area for consumption calculation
-- **Settings** — gateway configuration (IP, HTTP/HTTPS, optional Basic Auth, SSL cert verification), polling interval slider (1–60 min), build version
+- **Settings** — gateway configuration (IP, HTTP/HTTPS, optional Basic Auth, SSL cert verification), polling interval slider (1–60 min), appearance (light/dark mode, 24h/12h clock), build version
 - **No mandatory setup** — opens directly to the dashboard; configure the gateway from Settings at any time
-- **Dark glass-morphism UI** — electric blue accents, 24h clock, smooth transitions, fully responsive
+- **Light and dark mode** — toggle in the navbar or Settings; preference saved across sessions
 
 ---
 

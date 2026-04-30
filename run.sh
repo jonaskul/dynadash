@@ -293,6 +293,17 @@ echo ""
 pct exec "$CTID" -- bash "${APP_DIR}/install.sh" \
   || msg_error "install.sh failed (see output above)."
 
+# ── Enable SSH ─────────────────────────────────────────────────────────────────
+msg_info "Setting up SSH access…"
+ROOT_PASS=$(tr -dc 'A-Za-z0-9@#%' < /dev/urandom | head -c 16)
+pct exec "$CTID" -- bash -c "
+  echo 'root:${ROOT_PASS}' | chpasswd
+  apt-get install -y -qq openssh-server
+  sed -i 's/^#*PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+  systemctl enable --now ssh
+"
+msg_ok "SSH enabled"
+
 # ── Done ──────────────────────────────────────────────────────────────────────
 CT_IP=$(pct exec "$CTID" -- bash -c "hostname -I | awk '{print \$1}'" 2>/dev/null \
         || echo "<container-ip>")
@@ -304,6 +315,10 @@ echo -e "  ${GN}${BLD}═══════════════════�
 echo ""
 echo -e "  CT ID      : ${CY}${CTID}${NC}"
 echo -e "  Dashboard  : ${CY}http://${CT_IP}/${NC}"
+echo -e "  SSH        : ${CY}ssh root@${CT_IP}${NC}"
+echo -e "  Password   : ${CY}${ROOT_PASS}${NC}"
+echo ""
+echo -e "  ${YW}Save the password — it will not be shown again.${NC}"
 echo ""
 echo -e "  On first launch you will be prompted for your"
 echo -e "  Dynalite gateway IP, username, and password."

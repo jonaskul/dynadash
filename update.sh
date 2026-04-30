@@ -2,6 +2,7 @@
 # DynaDash update script
 # Rebuilds and restarts everything after a code update.
 # Pass --skip-pull if the caller (run.sh) already did the git pull.
+# Pass --force to reinstall even when already up to date.
 
 set -euo pipefail
 
@@ -13,10 +14,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="${SCRIPT_DIR}/backend"
 FRONTEND_DIR="${SCRIPT_DIR}/frontend"
 WWW_DIR="/var/www/dynadash"
+LOG_FILE="/var/log/dynadash-update.log"
 SKIP_PULL=false
+FORCE=false
 
 for arg in "$@"; do
   [[ "$arg" == "--skip-pull" ]] && SKIP_PULL=true
+  [[ "$arg" == "--force" ]]     && FORCE=true
 done
 
 CYAN='\033[0;36m'
@@ -30,15 +34,45 @@ error() { echo -e "  ${RED}✗${NC} $*" >&2; exit 1; }
 
 [[ $EUID -ne 0 ]] && error "Run as root."
 
+# Log all output to file and stdout
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo ""
+echo "── $(date '+%Y-%m-%d %H:%M:%S') ──────────────────────────────────"
+
 cd "${SCRIPT_DIR}"
 
 # ---------------------------------------------------------------------------
 # 1. Pull latest code (skipped when called from run.sh which already did it)
 # ---------------------------------------------------------------------------
+DATA_DIR="${BACKEND_DIR}/data"
+DATA_BACKUP="/tmp/dynadash-data.bak"
+
 if [[ "${SKIP_PULL}" == false ]]; then
-  info "Pulling latest code…"
-  git pull origin "$(git rev-parse --abbrev-ref HEAD)"
+  BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+  git fetch --quiet origin "$BRANCH"
+  LOCAL=$(git rev-parse HEAD)
+  REMOTE=$(git rev-parse "origin/$BRANCH")
+
+  if [[ "$LOCAL" == "$REMOTE" ]] && [[ "$FORCE" == false ]]; then
+    echo "Already up to date (${LOCAL:0:7}). Use --force to reinstall."
+    exit 0
+  fi
+
+  info "Updating $(git rev-parse --short HEAD) → $(git rev-parse --short "origin/$BRANCH")…"
+
+  if [[ -d "$DATA_DIR" ]]; then
+    cp -r "$DATA_DIR" "$DATA_BACKUP"
+    info "Data backed up to $DATA_BACKUP"
+  fi
+
+  git pull origin "$BRANCH"
   ok "Code updated to $(git rev-parse --short HEAD)"
+
+  if [[ -d "$DATA_BACKUP" ]]; then
+    cp -r "${DATA_BACKUP}/." "$DATA_DIR/"
+    info "Data restored"
+  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -100,16 +134,23 @@ systemctl daemon-reload
 ok "systemd service updated"
 
 # ---------------------------------------------------------------------------
-# 6. Restart services
+# 6. Validate backend before restart
+# ---------------------------------------------------------------------------
+python3 -c "import py_compile; py_compile.compile('${BACKEND_DIR}/main.py', doraise=True)" \
+  || error "Syntax error in backend/main.py — aborting restart"
+
+# ---------------------------------------------------------------------------
+# 7. Restart services
 # ---------------------------------------------------------------------------
 info "Restarting dynadash-backend…"
 systemctl restart dynadash-backend
-sleep 2
-if systemctl is-active --quiet dynadash-backend; then
-  ok "Backend restarted"
-else
-  error "Backend failed to restart. Run: journalctl -u dynadash-backend -n 50"
-fi
+for i in $(seq 1 20); do
+  sleep 1
+  if systemctl is-active --quiet dynadash-backend; then
+    ok "Backend started"; break
+  fi
+  [[ $i -eq 20 ]] && error "Backend failed to start. Run: journalctl -u dynadash-backend -n 50"
+done
 
 info "Reloading nginx…"
 nginx -t 2>/dev/null

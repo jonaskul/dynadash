@@ -295,7 +295,7 @@ pct exec "$CTID" -- bash "${APP_DIR}/install.sh" \
 
 # ── Enable SSH ─────────────────────────────────────────────────────────────────
 msg_info "Setting up SSH access…"
-ROOT_PASS=$(tr -dc 'A-Za-z0-9@#%' < /dev/urandom | head -c 16)
+ROOT_PASS=$(tr -dc 'A-Za-z0-9@#%' < /dev/urandom | head -c 16 || true)
 pct exec "$CTID" -- bash -c "
   echo 'root:${ROOT_PASS}' | chpasswd
   apt-get install -y -qq openssh-server

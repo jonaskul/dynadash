@@ -633,7 +633,7 @@ function PhaseHistoryPanel({ enabled }: { enabled: boolean }) {
               contentStyle={tooltipStyle}
               labelFormatter={(v) => formatTime(v as string)}
               formatter={(value: number, name: string) => {
-                const idx = keys.indexOf(name as typeof keys[number]);
+                const idx = (keys as readonly string[]).indexOf(name);
                 return [`${value.toFixed(isVoltage ? 1 : 2)}${unit}`, labels[idx] ?? name];
               }}
             />

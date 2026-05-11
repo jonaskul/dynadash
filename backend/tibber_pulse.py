@@ -112,24 +112,37 @@ class TibberPulseManager:
             async with session.ws_connect(
                 url,
                 headers={"Authorization": f"Bearer {token}"},
-                protocols=["graphql-transport-ws"],
+                protocols=["graphql-ws"],
                 timeout=aiohttp.ClientTimeout(connect=30, sock_read=None),
             ) as ws:
-                logger.info("Pulse: WebSocket opened, sending connection_init")
+                logger.info("Pulse: WebSocket opened (protocol=%s), sending connection_init", ws.protocol)
                 await ws.send_json({"type": "connection_init", "payload": {}})
 
-                try:
-                    raw_ack = await asyncio.wait_for(ws.receive(), timeout=30)
-                except asyncio.TimeoutError:
+                # graphql-ws protocol: server may send ka (keep-alive) before connection_ack
+                self._connected = False
+                deadline = asyncio.get_event_loop().time() + 30
+                while asyncio.get_event_loop().time() < deadline:
+                    remaining = deadline - asyncio.get_event_loop().time()
+                    try:
+                        raw = await asyncio.wait_for(ws.receive(), timeout=remaining)
+                    except asyncio.TimeoutError:
+                        raise RuntimeError("Timeout waiting for connection_ack from Tibber")
+                    if raw.type != aiohttp.WSMsgType.TEXT:
+                        raise RuntimeError(f"Unexpected message type during handshake: {raw.type} {raw.data}")
+                    msg = json.loads(raw.data)
+                    mtype = msg.get("type")
+                    logger.info("Pulse: handshake message: %s", mtype)
+                    if mtype == "connection_ack":
+                        break
+                    if mtype == "ka":
+                        continue  # keep-alive, ignore and wait for ack
+                    raise RuntimeError(f"Unexpected handshake message: {msg}")
+                else:
                     raise RuntimeError("Timeout waiting for connection_ack from Tibber")
-                if raw_ack.type != aiohttp.WSMsgType.TEXT:
-                    raise RuntimeError(f"Unexpected WebSocket message type: {raw_ack.type}")
-                ack = json.loads(raw_ack.data)
-                if ack.get("type") != "connection_ack":
-                    raise RuntimeError(f"Expected connection_ack, got: {ack}")
 
+                # graphql-ws uses "start" (not "subscribe")
                 await ws.send_json(
-                    {"type": "subscribe", "id": "1", "payload": {"query": query}}
+                    {"type": "start", "id": "1", "payload": {"query": query}}
                 )
                 self._connected = True
                 logger.info("Tibber Pulse connected for home %s", home_id)
@@ -138,15 +151,19 @@ class TibberPulseManager:
                     if raw.type == aiohttp.WSMsgType.TEXT:
                         msg = json.loads(raw.data)
                         mtype = msg.get("type")
-                        if mtype == "next":
-                            data = msg["payload"]["data"]["liveMeasurement"]
-                            self._last_measurement = data
-                            self._last_ts = data.get("timestamp")
-                            await asyncio.to_thread(self._write_pulse, home_id, data)
-                        elif mtype == "ping":
-                            await ws.send_json({"type": "pong"})
+                        if mtype == "data":  # graphql-ws data message
+                            lm = msg.get("payload", {}).get("data", {}).get("liveMeasurement")
+                            if lm:
+                                self._last_measurement = lm
+                                self._last_ts = lm.get("timestamp")
+                                await asyncio.to_thread(self._write_pulse, home_id, lm)
+                        elif mtype == "ka":
+                            pass  # keep-alive, ignore
                         elif mtype == "error":
                             logger.error("Pulse subscription error: %s", msg)
+                        elif mtype == "complete":
+                            logger.info("Pulse subscription completed")
+                            break
                     elif raw.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
                         logger.warning("Pulse WebSocket closed: %s %s", raw.type, raw.data)
                         break

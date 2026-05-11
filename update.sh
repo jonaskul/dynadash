@@ -69,6 +69,9 @@ if [[ "${SKIP_PULL}" == false ]]; then
   git pull origin "$BRANCH"
   ok "Code updated to $(git rev-parse --short HEAD)"
 
+  # Restore execute bit (GitHub API pushes as non-executable)
+  chmod +x "${SCRIPT_DIR}/update.sh" "${SCRIPT_DIR}/install.sh" "${SCRIPT_DIR}/run.sh" 2>/dev/null || true
+
   if [[ -d "$DATA_BACKUP" ]]; then
     cp -r "${DATA_BACKUP}/." "$DATA_DIR/"
     info "Data restored"

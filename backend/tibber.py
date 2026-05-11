@@ -155,12 +155,29 @@ from(bucket: "{config.influxdb.bucket}")
         except Exception:
             pass
 
+    current_power: Optional[float] = None
+    if configured:
+        try:
+            flux = f"""
+from(bucket: "{config.influxdb.bucket}")
+  |> range(start: -5m)
+  |> filter(fn: (r) => r._measurement == "tibber_pulse")
+  |> filter(fn: (r) => r._field == "power")
+  |> last()
+"""
+            rows = _influx_query(flux)
+            if rows:
+                current_power = rows[-1]["value"]
+        except Exception:
+            pass
+
     return {
         "configured": configured,
         "home_id": home_id,
         "pulse_connected": pulse_manager.connected,
         "last_pulse_ts": pulse_manager.last_ts,
         "current_price": current_price,
+        "current_power": current_power,
     }
 
 

@@ -76,6 +76,7 @@ function ThemeToggle() {
 const NAV_LINKS = [
   { to: "/", label: "Control" },
   { to: "/history", label: "History" },
+  { to: "/energy", label: "Energy" },
   { to: "/areas", label: "Areas" },
   { to: "/settings", label: "Settings" },
 ];

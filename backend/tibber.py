@@ -101,31 +101,18 @@ async def get_energy_settings() -> dict[str, Any]:
 async def save_energy_settings(body: EnergySettings) -> dict[str, Any]:
     set_setting("tibber_token", body.token)
     set_setting("tibber_home_id", body.home_id)
-    # Restart background services with new credentials
     await pulse_manager.start(body.token, body.home_id)
     await rest_poller.start(body.token, body.home_id)
-    return {"configured": True, "home_id": body.home_id}
+    return {"ok": True}
 
 
 @router.delete("/settings")
 async def delete_energy_settings() -> dict[str, Any]:
-    pulse_manager.stop()
-    rest_poller.stop()
     delete_setting("tibber_token")
     delete_setting("tibber_home_id")
-    return {"configured": False}
-
-
-@router.get("/homes")
-async def list_homes(token: Optional[str] = Query(None)) -> Any:
-    if not token:
-        token = _require_token()
-    query = "{ viewer { homes { id address { address1 city } } } }"
-    try:
-        data = await _gql(token, query)
-    except TibberAPIError as exc:
-        raise HTTPException(502, {"error": "tibber_api_error", "detail": str(exc)})
-    return data["viewer"]["homes"]
+    pulse_manager.stop()
+    rest_poller.stop()
+    return {"ok": True}
 
 
 @router.get("/status")
@@ -137,22 +124,27 @@ async def energy_status() -> dict[str, Any]:
     current_price: Optional[dict[str, Any]] = None
     if configured and home_id:
         try:
+            from influxdb_client import InfluxDBClient
             flux = f"""
 from(bucket: "{config.influxdb.bucket}")
   |> range(start: -2h)
   |> filter(fn: (r) => r._measurement == "tibber_price")
-  |> filter(fn: (r) => r._field == "total" or r._field == "level")
+  |> filter(fn: (r) => r._field == "total")
   |> last()
-  |> pivot(rowKey: ["_time", "level", "currency"], columnKey: ["_field"], valueColumn: "_value")
 """
-            rows = _influx_query(flux)
-            if rows:
-                row = rows[-1]
-                current_price = {
-                    "total": row.get("value"),
-                    "level": row.get("level"),
-                    "currency": row.get("currency"),
-                }
+            with InfluxDBClient(
+                url=config.influxdb.url,
+                token=config.influxdb.token,
+                org=config.influxdb.org,
+            ) as client:
+                tables = client.query_api().query(flux)
+            for table in tables:
+                for record in table.records:
+                    current_price = {
+                        "total": record.get_value(),
+                        "level": record.values.get("level"),
+                        "currency": record.values.get("currency"),
+                    }
         except Exception:
             pass
 
@@ -208,15 +200,12 @@ async def get_prices() -> dict[str, Any]:
 @router.get("/consumption")
 async def get_consumption(
     resolution: str = Query("HOURLY"),
-    last: int = Query(30, ge=1, le=744),
+    last: int = Query(24),
 ) -> list[dict[str, Any]]:
+    if resolution not in _VALID_RESOLUTIONS:
+        raise HTTPException(422, f"Invalid resolution '{resolution}'.")
     token = _require_token()
     home_id = get_setting("tibber_home_id") or ""
-    if resolution not in _VALID_RESOLUTIONS:
-        raise HTTPException(
-            422,
-            f"Invalid resolution '{resolution}'. Must be one of: {', '.join(_VALID_RESOLUTIONS)}",
-        )
     query = """{{ viewer {{ home(id: "{home_id}") {{
         consumption(resolution: {resolution}, last: {last}) {{
             nodes {{ from to cost unitPrice consumption currency }}
@@ -268,3 +257,50 @@ from(bucket: "{config.influxdb.bucket}")
     except Exception as exc:
         raise HTTPException(500, f"InfluxDB query failed: {exc}")
     return [{"time": r["time"], "accumulatedCost": r["value"]} for r in rows]
+
+
+_PHASE_FIELDS = [
+    "voltagePhase1", "voltagePhase2", "voltagePhase3",
+    "currentL1", "currentL2", "currentL3",
+]
+
+@router.get("/history/phases")
+async def history_phases(
+    range: str = Query("1h"),
+) -> list[dict[str, Any]]:
+    if range not in _VALID_RANGES:
+        raise HTTPException(422, f"Invalid range '{range}'. Must be one of: {', '.join(sorted(_VALID_RANGES))}")
+    fields_filter = " or ".join(f'r._field == "{f}"' for f in _PHASE_FIELDS)
+    flux = f"""
+from(bucket: "{config.influxdb.bucket}")
+  |> range(start: -{range})
+  |> filter(fn: (r) => r._measurement == "tibber_pulse")
+  |> filter(fn: (r) => {fields_filter})
+  |> sort(columns: ["_time"])
+"""
+    try:
+        rows = _influx_query(flux)
+    except Exception as exc:
+        raise HTTPException(500, f"InfluxDB query failed: {exc}")
+    by_time: dict[str, dict[str, Any]] = {}
+    for r in rows:
+        t = r["time"]
+        if t not in by_time:
+            by_time[t] = {"time": t}
+        if r["field"] and r["value"] is not None:
+            by_time[t][r["field"]] = r["value"]
+    return sorted(by_time.values(), key=lambda x: x["time"])
+
+
+@router.get("/homes")
+async def get_homes(
+    token: Optional[str] = Query(None),
+) -> list[dict[str, Any]]:
+    if not token:
+        token = _require_token()
+    query = """{ viewer { homes { id address { address1 city } } } }"""
+    try:
+        data = await _gql(token, query)
+    except TibberAPIError as exc:
+        raise HTTPException(502, {"error": "tibber_api_error", "detail": str(exc)})
+    return data["viewer"]["homes"]

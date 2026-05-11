@@ -133,3 +133,13 @@ export interface PowerPoint {
   time: string;
   power: number | null;
 }
+
+export interface PhasePoint {
+  time: string;
+  voltagePhase1?: number | null;
+  voltagePhase2?: number | null;
+  voltagePhase3?: number | null;
+  currentL1?: number | null;
+  currentL2?: number | null;
+  currentL3?: number | null;
+}

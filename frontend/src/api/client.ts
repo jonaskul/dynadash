@@ -6,6 +6,7 @@ import type {
   GatewayConfig,
   GatewayConfigOut,
   LevelPoint,
+  PhasePoint,
   PowerPoint,
   PricesResponse,
   TemperaturePoint,
@@ -177,6 +178,10 @@ export async function getEnergyConsumption(
 
 export async function getEnergyHistoryPower(range: string): Promise<PowerPoint[]> {
   return request<PowerPoint[]>("GET", `/energy/history/power?range=${range}`);
+}
+
+export async function getEnergyHistoryPhases(range: string): Promise<PhasePoint[]> {
+  return request<PhasePoint[]>("GET", `/energy/history/phases?range=${range}`);
 }
 
 export async function getEnergyHomes(

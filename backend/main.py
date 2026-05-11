@@ -9,6 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from poller import poller
 from routers import areas, backup, config_areas, gateway, history, settings
+from tibber import router as tibber_router
+from tibber_db import get_setting, init_db
+from tibber_pulse import pulse_manager, rest_poller
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,10 +20,19 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("DynaDash backend starting — launching poller")
+    init_db()
     await poller.start()
+    token = get_setting("tibber_token")
+    home_id = get_setting("tibber_home_id")
+    if token and home_id:
+        logger.info("Starting Tibber services (home %s)", home_id)
+        await pulse_manager.start(token, home_id)
+        await rest_poller.start(token, home_id)
     yield
-    logger.info("DynaDash backend shutting down — stopping poller")
+    logger.info("DynaDash backend shutting down")
     poller.stop()
+    pulse_manager.stop()
+    rest_poller.stop()
 
 
 app = FastAPI(
@@ -45,6 +57,7 @@ app.include_router(config_areas.router)
 app.include_router(history.router)
 app.include_router(settings.router)
 app.include_router(backup.router)
+app.include_router(tibber_router)
 
 
 @app.get("/api/health")

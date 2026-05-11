@@ -179,12 +179,15 @@ export async function getEnergyHistoryPower(range: string): Promise<PowerPoint[]
   return request<PowerPoint[]>("GET", `/energy/history/power?range=${range}`);
 }
 
-export async function getEnergyHomes(): Promise<
-  { id: string; address: { address1: string; city: string } }[]
-> {
+export async function getEnergyHomes(
+  token?: string
+): Promise<{ id: string; address: { address1: string; city: string } }[]> {
+  const url = token
+    ? `/energy/homes?token=${encodeURIComponent(token)}`
+    : "/energy/homes";
   return request<{ id: string; address: { address1: string; city: string } }[]>(
     "GET",
-    "/energy/homes"
+    url
   );
 }
 

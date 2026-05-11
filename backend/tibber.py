@@ -117,8 +117,9 @@ async def delete_energy_settings() -> dict[str, Any]:
 
 
 @router.get("/homes")
-async def list_homes() -> Any:
-    token = _require_token()
+async def list_homes(token: Optional[str] = Query(None)) -> Any:
+    if not token:
+        token = _require_token()
     query = "{ viewer { homes { id address { address1 city } } } }"
     try:
         data = await _gql(token, query)

@@ -129,7 +129,7 @@ function SetupCard({ onSaved }: { onSaved: () => void }) {
     setError(null);
     setLoadingHomes(true);
     try {
-      const result = await getEnergyHomes();
+      const result = await getEnergyHomes(token);
       setHomes(result);
       if (result.length > 0) setHomeId(result[0].id);
     } catch (err) {

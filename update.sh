@@ -48,6 +48,11 @@ cd "${SCRIPT_DIR}"
 DATA_DIR="${BACKEND_DIR}/data"
 DATA_BACKUP="/tmp/dynadash-data.bak"
 
+# CODE_CHANGED tracks whether git reset actually moved HEAD.
+# pip install and backend restart always run regardless of this flag.
+# Frontend rebuild is skipped when code hasn't changed (and not --force).
+CODE_CHANGED=false
+
 if [[ "${SKIP_PULL}" == false ]]; then
   BRANCH="$(git rev-parse --abbrev-ref HEAD)"
   git fetch --quiet origin "$BRANCH"
@@ -55,32 +60,34 @@ if [[ "${SKIP_PULL}" == false ]]; then
   REMOTE=$(git rev-parse "origin/$BRANCH")
 
   if [[ "$LOCAL" == "$REMOTE" ]] && [[ "$FORCE" == false ]]; then
-    echo "Already up to date (${LOCAL:0:7}). Use --force to reinstall."
-    exit 0
-  fi
+    echo "Code already up to date (${LOCAL:0:7}) — syncing deps and restarting backend."
+    # Fall through: pip install + backend restart still run below.
+  else
+    CODE_CHANGED=true
+    info "Updating $(git rev-parse --short HEAD) → $(git rev-parse --short "origin/$BRANCH")…"
 
-  info "Updating $(git rev-parse --short HEAD) → $(git rev-parse --short "origin/$BRANCH")…"
+    if [[ -d "$DATA_DIR" ]]; then
+      cp -r "$DATA_DIR" "$DATA_BACKUP"
+      info "Data backed up to $DATA_BACKUP"
+    fi
 
-  if [[ -d "$DATA_DIR" ]]; then
-    cp -r "$DATA_DIR" "$DATA_BACKUP"
-    info "Data backed up to $DATA_BACKUP"
-  fi
+    # Hard-reset to remote (avoids conflicts from file-mode changes made by previous run)
+    git reset --hard "origin/$BRANCH"
+    ok "Code updated to $(git rev-parse --short HEAD)"
 
-  # Hard-reset to remote (avoids conflicts from file-mode changes made by previous run)
-  git reset --hard "origin/$BRANCH"
-  ok "Code updated to $(git rev-parse --short HEAD)"
+    # Restore execute bit (GitHub API pushes scripts as non-executable)
+    chmod +x "${SCRIPT_DIR}/update.sh" "${SCRIPT_DIR}/install.sh" "${SCRIPT_DIR}/run.sh" 2>/dev/null || true
 
-  # Restore execute bit (GitHub API pushes scripts as non-executable)
-  chmod +x "${SCRIPT_DIR}/update.sh" "${SCRIPT_DIR}/install.sh" "${SCRIPT_DIR}/run.sh" 2>/dev/null || true
-
-  if [[ -d "$DATA_BACKUP" ]]; then
-    cp -r "${DATA_BACKUP}/." "$DATA_DIR/"
-    info "Data restored"
+    if [[ -d "$DATA_BACKUP" ]]; then
+      cp -r "${DATA_BACKUP}/." "$DATA_DIR/"
+      info "Data restored"
+    fi
   fi
 fi
 
 # ---------------------------------------------------------------------------
-# 2. Update Python dependencies
+# 2. Update Python dependencies (always — ensures new packages like websockets
+#    are installed even when code was already at the latest commit)
 # ---------------------------------------------------------------------------
 info "Updating Python dependencies…"
 "${BACKEND_DIR}/.venv/bin/pip" install --quiet --upgrade pip
@@ -113,23 +120,25 @@ PYEOF
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Rebuild frontend
+# 3. Rebuild frontend (only when code changed or --force)
 # ---------------------------------------------------------------------------
-info "Rebuilding frontend…"
-cd "${FRONTEND_DIR}"
-npm install --silent
-npm run build --silent
-cd "${SCRIPT_DIR}"
-ok "Frontend rebuilt"
+if [[ "${CODE_CHANGED}" == true ]] || [[ "${FORCE}" == true ]]; then
+  info "Rebuilding frontend…"
+  cd "${FRONTEND_DIR}"
+  npm install --silent
+  npm run build --silent
+  cd "${SCRIPT_DIR}"
+  ok "Frontend rebuilt"
 
-# ---------------------------------------------------------------------------
-# 4. Deploy frontend
-# ---------------------------------------------------------------------------
-info "Deploying frontend…"
-mkdir -p "${WWW_DIR}"
-rm -rf "${WWW_DIR:?}"/*
-cp -r "${FRONTEND_DIR}/dist/." "${WWW_DIR}/"
-ok "Frontend deployed"
+  # -------------------------------------------------------------------------
+  # 4. Deploy frontend
+  # -------------------------------------------------------------------------
+  info "Deploying frontend…"
+  mkdir -p "${WWW_DIR}"
+  rm -rf "${WWW_DIR:?}"/*
+  cp -r "${FRONTEND_DIR}/dist/." "${WWW_DIR}/"
+  ok "Frontend deployed"
+fi
 
 # ---------------------------------------------------------------------------
 # 5. Regenerate systemd service (path may have changed or service may be new)
@@ -181,10 +190,12 @@ for i in $(seq 1 20); do
   [[ $i -eq 20 ]] && error "Backend failed to start. Run: journalctl -u dynadash-backend -n 50"
 done
 
-info "Reloading nginx…"
-nginx -t 2>/dev/null
-systemctl reload nginx
-ok "nginx reloaded"
+if [[ "${CODE_CHANGED}" == true ]] || [[ "${FORCE}" == true ]]; then
+  info "Reloading nginx…"
+  nginx -t 2>/dev/null
+  systemctl reload nginx
+  ok "nginx reloaded"
+fi
 
 LOCAL_IP="$(hostname -I | awk '{print $1}')"
 echo ""

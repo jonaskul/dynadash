@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from typing import Any, Optional
 
-import websockets
+import aiohttp
 from influxdb_client import Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 
@@ -108,42 +108,48 @@ class TibberPulseManager:
         query = _LIVE_MEASUREMENT_QUERY.format(home_id=home_id)
 
         logger.info("Pulse: connecting to Tibber WebSocket (home %s)", home_id)
-        async with websockets.connect(
-            url,
-            additional_headers={"Authorization": f"Bearer {token}"},
-            subprotocols=["graphql-transport-ws"],
-            open_timeout=30,
-        ) as ws:
-            logger.info("Pulse: WebSocket opened, sending connection_init")
-            await ws.send(json.dumps(
-                {"type": "connection_init", "payload": {}}
-            ))
-            try:
-                raw_ack = await asyncio.wait_for(ws.recv(), timeout=30)
-            except asyncio.TimeoutError:
-                raise RuntimeError("Timeout waiting for connection_ack from Tibber")
-            ack = json.loads(raw_ack)
-            if ack.get("type") != "connection_ack":
-                raise RuntimeError(f"Expected connection_ack, got: {ack}")
+        async with aiohttp.ClientSession() as session:
+            async with session.ws_connect(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+                protocols=["graphql-transport-ws"],
+                timeout=aiohttp.ClientTimeout(connect=30, sock_read=None),
+            ) as ws:
+                logger.info("Pulse: WebSocket opened, sending connection_init")
+                await ws.send_json({"type": "connection_init", "payload": {}})
 
-            await ws.send(json.dumps(
-                {"type": "subscribe", "id": "1", "payload": {"query": query}}
-            ))
-            self._connected = True
-            logger.info("Tibber Pulse connected for home %s", home_id)
+                try:
+                    raw_ack = await asyncio.wait_for(ws.receive(), timeout=30)
+                except asyncio.TimeoutError:
+                    raise RuntimeError("Timeout waiting for connection_ack from Tibber")
+                if raw_ack.type != aiohttp.WSMsgType.TEXT:
+                    raise RuntimeError(f"Unexpected WebSocket message type: {raw_ack.type}")
+                ack = json.loads(raw_ack.data)
+                if ack.get("type") != "connection_ack":
+                    raise RuntimeError(f"Expected connection_ack, got: {ack}")
 
-            async for raw in ws:
-                msg = json.loads(raw)
-                mtype = msg.get("type")
-                if mtype == "next":
-                    data = msg["payload"]["data"]["liveMeasurement"]
-                    self._last_measurement = data
-                    self._last_ts = data.get("timestamp")
-                    await asyncio.to_thread(self._write_pulse, home_id, data)
-                elif mtype == "ping":
-                    await ws.send(json.dumps({"type": "pong"}))
-                elif mtype == "error":
-                    logger.error("Pulse subscription error: %s", msg)
+                await ws.send_json(
+                    {"type": "subscribe", "id": "1", "payload": {"query": query}}
+                )
+                self._connected = True
+                logger.info("Tibber Pulse connected for home %s", home_id)
+
+                async for raw in ws:
+                    if raw.type == aiohttp.WSMsgType.TEXT:
+                        msg = json.loads(raw.data)
+                        mtype = msg.get("type")
+                        if mtype == "next":
+                            data = msg["payload"]["data"]["liveMeasurement"]
+                            self._last_measurement = data
+                            self._last_ts = data.get("timestamp")
+                            await asyncio.to_thread(self._write_pulse, home_id, data)
+                        elif mtype == "ping":
+                            await ws.send_json({"type": "pong"})
+                        elif mtype == "error":
+                            logger.error("Pulse subscription error: %s", msg)
+                    elif raw.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                        logger.warning("Pulse WebSocket closed: %s %s", raw.type, raw.data)
+                        break
 
     def _write_pulse(self, home_id: str, data: dict[str, Any]) -> None:
         ts_str = data.get("timestamp", "")

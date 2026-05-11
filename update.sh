@@ -66,10 +66,11 @@ if [[ "${SKIP_PULL}" == false ]]; then
     info "Data backed up to $DATA_BACKUP"
   fi
 
-  git pull origin "$BRANCH"
+  # Hard-reset to remote (avoids conflicts from file-mode changes made by previous run)
+  git reset --hard "origin/$BRANCH"
   ok "Code updated to $(git rev-parse --short HEAD)"
 
-  # Restore execute bit (GitHub API pushes as non-executable)
+  # Restore execute bit (GitHub API pushes scripts as non-executable)
   chmod +x "${SCRIPT_DIR}/update.sh" "${SCRIPT_DIR}/install.sh" "${SCRIPT_DIR}/run.sh" 2>/dev/null || true
 
   if [[ -d "$DATA_BACKUP" ]]; then

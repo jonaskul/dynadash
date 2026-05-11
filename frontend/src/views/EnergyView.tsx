@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import {
   getEnergyConsumption,
+  getEnergyHistoryPhases,
   getEnergyHistoryPower,
   getEnergyHomes,
   getEnergyPrices,
@@ -24,6 +25,7 @@ import {
 import type {
   ConsumptionNode,
   EnergyStatus,
+  PhasePoint,
   PowerPoint,
   PricesResponse,
 } from "../api/types";
@@ -509,6 +511,152 @@ function PowerHistoryPanel({
 }
 
 // ---------------------------------------------------------------------------
+// PhaseHistoryPanel
+// ---------------------------------------------------------------------------
+
+const PHASE_COLORS = {
+  L1: "#f97316",
+  L2: "#a78bfa",
+  L3: "#34d399",
+};
+
+type PhaseTab = "voltage" | "current";
+
+function PhaseHistoryPanel({ enabled }: { enabled: boolean }) {
+  const [range, setRange] = useState<PowerRange>("1h");
+  const [tab, setTab] = useState<PhaseTab>("voltage");
+  const { lightMode } = useUISettings();
+
+  const { data: phases = [], isLoading } = useQuery({
+    queryKey: ["energy-phases", range],
+    queryFn: () => getEnergyHistoryPhases(range),
+    staleTime: 30_000,
+    enabled,
+  });
+
+  const gridColor = lightMode ? "rgba(0,0,0,0.07)" : "rgba(255,255,255,0.06)";
+  const axisColor = lightMode ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.3)";
+  const tooltipStyle = lightMode
+    ? { backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 8, color: "#0f172a", fontSize: 12 }
+    : { backgroundColor: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#f8fafc", fontSize: 12 };
+
+  function formatTime(iso: string): string {
+    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+
+  const isVoltage = tab === "voltage";
+  const keys = isVoltage
+    ? (["voltagePhase1", "voltagePhase2", "voltagePhase3"] as const)
+    : (["currentL1", "currentL2", "currentL3"] as const);
+  const labels = isVoltage
+    ? ["L1 (V)", "L2 (V)", "L3 (V)"]
+    : ["L1 (A)", "L2 (A)", "L3 (A)"];
+  const unit = isVoltage ? " V" : " A";
+  const colors = [PHASE_COLORS.L1, PHASE_COLORS.L2, PHASE_COLORS.L3];
+
+  const hasData = phases.length > 0 && phases.some((p) => keys.some((k) => p[k] != null));
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div className="flex rounded-lg border border-slate-200 overflow-hidden dark:border-white/10">
+          {(["voltage", "current"] as PhaseTab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                t === tab
+                  ? "bg-electric-blue text-navy-900"
+                  : "bg-white text-slate-500 hover:text-slate-900 hover:bg-slate-50 dark:bg-navy-800 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5"
+              }`}
+            >
+              {t === "voltage" ? "Voltage" : "Current"}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-3">
+            {colors.map((c, i) => (
+              <span key={i} className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+                <span className="inline-block h-2 w-4 rounded-sm" style={{ backgroundColor: c }} />
+                {`L${i + 1}`}
+              </span>
+            ))}
+          </div>
+          <div className="flex rounded-lg border border-slate-200 overflow-hidden dark:border-white/10">
+            {POWER_RANGES.map((r) => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                  r === range
+                    ? "bg-electric-blue text-navy-900"
+                    : "bg-white text-slate-500 hover:text-slate-900 hover:bg-slate-50 dark:bg-navy-800 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5"
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex h-[200px] items-center justify-center">
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-electric-blue border-t-transparent" />
+        </div>
+      ) : !hasData ? (
+        <div className="flex h-[200px] items-center justify-center">
+          <p className="text-sm text-slate-400 dark:text-slate-500">No data for this period.</p>
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={phases as PhasePoint[]} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+            <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+            <XAxis
+              dataKey="time"
+              tickFormatter={(v) => formatTime(v as string)}
+              tick={{ fill: axisColor, fontSize: 11 }}
+              axisLine={{ stroke: gridColor }}
+              tickLine={false}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              tick={{ fill: axisColor, fontSize: 11 }}
+              axisLine={{ stroke: gridColor }}
+              tickLine={false}
+              unit={unit}
+              width={isVoltage ? 52 : 44}
+              domain={["auto", "auto"]}
+            />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              labelFormatter={(v) => formatTime(v as string)}
+              formatter={(value: number, name: string) => {
+                const idx = keys.indexOf(name as typeof keys[number]);
+                return [`${value.toFixed(isVoltage ? 1 : 2)}${unit}`, labels[idx] ?? name];
+              }}
+            />
+            {keys.map((k, i) => (
+              <Line
+                key={k}
+                type="monotone"
+                dataKey={k}
+                stroke={colors[i]}
+                strokeWidth={2}
+                dot={false}
+                activeDot={{ r: 4, fill: colors[i] }}
+                connectNulls
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // EnergyView
 // ---------------------------------------------------------------------------
 
@@ -562,6 +710,7 @@ export default function EnergyView() {
       {prices && <PriceChartSection prices={prices} />}
       <StatsCards status={status} prices={prices} consumption={consumption} />
       <PowerHistoryPanel enabled={status.configured} />
+      <PhaseHistoryPanel enabled={status.configured} />
     </div>
   );
 }

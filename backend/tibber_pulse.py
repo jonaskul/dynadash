@@ -107,15 +107,22 @@ class TibberPulseManager:
         url = "wss://api.tibber.com/v1-beta/gql/subscriptions"
         query = _LIVE_MEASUREMENT_QUERY.format(home_id=home_id)
 
+        logger.info("Pulse: connecting to Tibber WebSocket (home %s)", home_id)
         async with websockets.connect(
             url,
             additional_headers={"Authorization": f"Bearer {token}"},
             subprotocols=["graphql-transport-ws"],
+            open_timeout=30,
         ) as ws:
+            logger.info("Pulse: WebSocket opened, sending connection_init")
             await ws.send(json.dumps(
                 {"type": "connection_init", "payload": {"token": token}}
             ))
-            ack = json.loads(await ws.recv())
+            try:
+                raw_ack = await asyncio.wait_for(ws.recv(), timeout=30)
+            except asyncio.TimeoutError:
+                raise RuntimeError("Timeout waiting for connection_ack from Tibber")
+            ack = json.loads(raw_ack)
             if ack.get("type") != "connection_ack":
                 raise RuntimeError(f"Expected connection_ack, got: {ack}")
 

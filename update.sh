@@ -19,8 +19,8 @@ SKIP_PULL=false
 FORCE=false
 
 for arg in "$@"; do
-  [[ "$arg" == "--skip-pull" ]] && SKIP_PULL=true
-  [[ "$arg" == "--force" ]]     && FORCE=true
+  [[  "$arg" == "--skip-pull" ]] && SKIP_PULL=true
+  [[  "$arg" == "--force" ]]     && FORCE=true
 done
 
 CYAN='\033[0;36m'
@@ -72,6 +72,27 @@ if [[ "${SKIP_PULL}" == false ]]; then
   if [[ -d "$DATA_BACKUP" ]]; then
     cp -r "${DATA_BACKUP}/." "$DATA_DIR/"
     info "Data restored"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 1b. Refresh InfluxDB token in config.yaml (fixes stale/wrong token)
+# ---------------------------------------------------------------------------
+CONFIG_YAML="${BACKEND_DIR}/config.yaml"
+if command -v influx &>/dev/null && [[ -f "${CONFIG_YAML}" ]]; then
+  INFLUX_TOKEN="$(influx auth list --json 2>/dev/null \
+    | python3 -c "import sys,json; auths=json.load(sys.stdin); print(auths[0]['token'])" 2>/dev/null || true)"
+  if [[ -n "${INFLUX_TOKEN}" ]]; then
+    python3 - "${CONFIG_YAML}" "${INFLUX_TOKEN}" <<'PYEOF'
+import sys, yaml
+path, token = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    cfg = yaml.safe_load(f) or {}
+cfg.setdefault("influxdb", {})["token"] = token
+with open(path, "w") as f:
+    yaml.dump(cfg, f, default_flow_style=False)
+PYEOF
+    info "InfluxDB token refreshed in config.yaml"
   fi
 fi
 

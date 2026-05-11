@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 from typing import Any, Optional
 
-import aiohttp
+import websockets
 from influxdb_client import Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 
@@ -22,27 +22,29 @@ _PULSE_FIELDS = [
     "voltagePhase3", "currentL1", "currentL2", "currentL3",
 ]
 
-_LIVE_MEASUREMENT_QUERY = """subscription {{ liveMeasurement(homeId: "{home_id}") {{
-    timestamp power lastMeterConsumption accumulatedConsumption
-    accumulatedCost accumulatedReward currency minPower averagePower
-    maxPower powerProduction minPowerProduction maxPowerProduction
-    lastMeterProduction powerFactor voltagePhase1 voltagePhase2
-    voltagePhase3 currentL1 currentL2 currentL3
-}} }}"""
+_LIVE_MEASUREMENT_QUERY = """subscription($homeId: ID!) {
+    liveMeasurement(homeId: $homeId) {
+        timestamp power lastMeterConsumption accumulatedConsumption
+        accumulatedCost accumulatedReward currency minPower averagePower
+        maxPower powerProduction minPowerProduction maxPowerProduction
+        lastMeterProduction powerFactor voltagePhase1 voltagePhase2
+        voltagePhase3 currentL1 currentL2 currentL3
+    }
+}"""
 
-_PRICE_QUERY = """{{ viewer {{ home(id: "{home_id}") {{
-    currentSubscription {{ priceInfo {{
-        current {{ total energy tax startsAt level currency }}
-        today   {{ total energy tax startsAt level currency }}
-        tomorrow {{ total energy tax startsAt level currency }}
-    }} }}
-}} }} }}"""
+_PRICE_QUERY = """{ viewer { home(id: "{home_id}") {
+    currentSubscription { priceInfo {
+        current { total energy tax startsAt level currency }
+        today   { total energy tax startsAt level currency }
+        tomorrow { total energy tax startsAt level currency }
+    } }
+} } }"""
 
-_CONSUMPTION_QUERY = """{{ viewer {{ home(id: "{home_id}") {{
-    consumption(resolution: HOURLY, last: 720) {{
-        nodes {{ from to cost unitPrice consumption currency }}
-    }}
-}} }} }}"""
+_CONSUMPTION_QUERY = """{ viewer { home(id: "{home_id}") {
+    consumption(resolution: HOURLY, last: 720) {
+        nodes { from to cost unitPrice consumption currency }
+    }
+} } }"""
 
 
 def _influx_client():
@@ -104,69 +106,76 @@ class TibberPulseManager:
                 backoff = min(backoff * 2, 60)
 
     async def _connect(self, token: str, home_id: str) -> None:
-        url = "wss://api.tibber.com/v1-beta/gql/subscriptions"
-        query = _LIVE_MEASUREMENT_QUERY.format(home_id=home_id)
-
+        url = "wss://websocket-api.tibber.com/v1-beta/gql/subscriptions"
         logger.info("Pulse: connecting to Tibber WebSocket (home %s)", home_id)
-        async with aiohttp.ClientSession() as session:
-            async with session.ws_connect(
-                url,
-                headers={"Authorization": f"Bearer {token}"},
-                protocols=["graphql-ws"],
-                timeout=aiohttp.ClientTimeout(connect=30, sock_read=None),
-            ) as ws:
-                logger.info("Pulse: WebSocket opened (protocol=%s), sending connection_init", ws.protocol)
-                await ws.send_json({"type": "connection_init", "payload": {}})
 
-                # graphql-ws protocol: server may send ka (keep-alive) before connection_ack
-                self._connected = False
-                deadline = asyncio.get_event_loop().time() + 30
-                while asyncio.get_event_loop().time() < deadline:
-                    remaining = deadline - asyncio.get_event_loop().time()
-                    try:
-                        raw = await asyncio.wait_for(ws.receive(), timeout=remaining)
-                    except asyncio.TimeoutError:
-                        raise RuntimeError("Timeout waiting for connection_ack from Tibber")
-                    if raw.type != aiohttp.WSMsgType.TEXT:
-                        raise RuntimeError(f"Unexpected message type during handshake: {raw.type} {raw.data}")
-                    msg = json.loads(raw.data)
-                    mtype = msg.get("type")
-                    logger.info("Pulse: handshake message: %s", mtype)
-                    if mtype == "connection_ack":
-                        break
-                    if mtype == "ka":
-                        continue  # keep-alive, ignore and wait for ack
-                    raise RuntimeError(f"Unexpected handshake message: {msg}")
-                else:
+        async with websockets.connect(
+            url,
+            subprotocols=["graphql-transport-ws"],
+            additional_headers={"Authorization": f"Bearer {token}"},
+            open_timeout=30,
+            ping_interval=20,
+            ping_timeout=20,
+        ) as ws:
+            logger.info("Pulse: WebSocket opened, sending connection_init")
+            await ws.send(json.dumps({
+                "type": "connection_init",
+                "payload": {"token": token},
+            }))
+
+            # Wait for connection_ack
+            self._connected = False
+            ack_received = False
+            deadline = asyncio.get_event_loop().time() + 30
+            while asyncio.get_event_loop().time() < deadline:
+                remaining = deadline - asyncio.get_event_loop().time()
+                try:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
+                except asyncio.TimeoutError:
                     raise RuntimeError("Timeout waiting for connection_ack from Tibber")
+                msg = json.loads(raw)
+                mtype = msg.get("type")
+                logger.info("Pulse: handshake message: %s", mtype)
+                if mtype == "connection_ack":
+                    ack_received = True
+                    break
+                if mtype in ("ka", "ping"):
+                    continue
+                raise RuntimeError(f"Unexpected handshake message: {msg}")
 
-                # graphql-ws uses "start" (not "subscribe")
-                await ws.send_json(
-                    {"type": "start", "id": "1", "payload": {"query": query}}
-                )
-                self._connected = True
-                logger.info("Tibber Pulse connected for home %s", home_id)
+            if not ack_received:
+                raise RuntimeError("Timeout waiting for connection_ack from Tibber")
 
-                async for raw in ws:
-                    if raw.type == aiohttp.WSMsgType.TEXT:
-                        msg = json.loads(raw.data)
-                        mtype = msg.get("type")
-                        if mtype == "data":  # graphql-ws data message
-                            lm = msg.get("payload", {}).get("data", {}).get("liveMeasurement")
-                            if lm:
-                                self._last_measurement = lm
-                                self._last_ts = lm.get("timestamp")
-                                await asyncio.to_thread(self._write_pulse, home_id, lm)
-                        elif mtype == "ka":
-                            pass  # keep-alive, ignore
-                        elif mtype == "error":
-                            logger.error("Pulse subscription error: %s", msg)
-                        elif mtype == "complete":
-                            logger.info("Pulse subscription completed")
-                            break
-                    elif raw.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                        logger.warning("Pulse WebSocket closed: %s %s", raw.type, raw.data)
-                        break
+            # Subscribe using graphql-transport-ws "subscribe" type
+            await ws.send(json.dumps({
+                "type": "subscribe",
+                "id": "1",
+                "payload": {
+                    "query": _LIVE_MEASUREMENT_QUERY,
+                    "variables": {"homeId": home_id},
+                },
+            }))
+            self._connected = True
+            logger.info("Tibber Pulse subscribed for home %s", home_id)
+
+            async for raw in ws:
+                msg = json.loads(raw)
+                mtype = msg.get("type")
+                if mtype == "next":  # graphql-transport-ws data message
+                    lm = msg.get("payload", {}).get("data", {}).get("liveMeasurement")
+                    if lm:
+                        self._last_measurement = lm
+                        self._last_ts = lm.get("timestamp")
+                        await asyncio.to_thread(self._write_pulse, home_id, lm)
+                elif mtype in ("ka", "ping"):
+                    pass
+                elif mtype == "pong":
+                    pass
+                elif mtype == "error":
+                    logger.error("Pulse subscription error: %s", msg)
+                elif mtype == "complete":
+                    logger.info("Pulse subscription completed")
+                    break
 
     def _write_pulse(self, home_id: str, data: dict[str, Any]) -> None:
         ts_str = data.get("timestamp", "")

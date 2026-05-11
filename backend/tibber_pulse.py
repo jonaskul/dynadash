@@ -116,7 +116,7 @@ class TibberPulseManager:
         ) as ws:
             logger.info("Pulse: WebSocket opened, sending connection_init")
             await ws.send(json.dumps(
-                {"type": "connection_init", "payload": {"token": token}}
+                {"type": "connection_init", "payload": {}}
             ))
             try:
                 raw_ack = await asyncio.wait_for(ws.recv(), timeout=30)

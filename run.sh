@@ -10,7 +10,7 @@ set -euo pipefail
 
 # ── Repo ─────────────────────────────────────────────────────────────────────
 REPO="https://github.com/jonaskul/dynadash.git"
-BRANCH="main"
+BRANCH="${BRANCH:-main}"
 APP_DIR="/opt/dynadash"
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
@@ -160,7 +160,7 @@ ask() {
 confirm() {
   local prompt="$1" ans
   read -r -p "  $prompt [y/N]: " ans </dev/tty
-  [[ "${ans,,}" == y* ]]
+  [[  "${ans,,}" == y* ]]
 }
 
 # ── Detect defaults ───────────────────────────────────────────────────────────

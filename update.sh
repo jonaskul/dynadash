@@ -91,7 +91,7 @@ if [[ -f "${CONFIG_YAML}" ]]; then
       | sed 's/[^=]*=\s*"\?\([^"]*\)"\?/\1/' | tr -d '[:space:]"')"
   fi
   if [[ -n "${INFLUX_TOKEN}" ]]; then
-    python3 - "${CONFIG_YAML}" "${INFLUX_TOKEN}" <<'PYEOF'
+    "${BACKEND_DIR}/.venv/bin/python3" - "${CONFIG_YAML}" "${INFLUX_TOKEN}" <<'PYEOF'
 import sys, yaml
 path, token = sys.argv[1], sys.argv[2]
 with open(path) as f:

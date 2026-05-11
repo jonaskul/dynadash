@@ -79,9 +79,14 @@ fi
 # 1b. Refresh InfluxDB token in config.yaml (fixes stale/wrong token)
 # ---------------------------------------------------------------------------
 CONFIG_YAML="${BACKEND_DIR}/config.yaml"
-if command -v influx &>/dev/null && [[ -f "${CONFIG_YAML}" ]]; then
-  INFLUX_TOKEN="$(influx auth list --json 2>/dev/null \
-    | python3 -c "import sys,json; auths=json.load(sys.stdin); print(auths[0]['token'])" 2>/dev/null || true)"
+if [[ -f "${CONFIG_YAML}" ]]; then
+  # Read token from the influxdb CLI config file (reliable; auth list masks tokens in newer versions)
+  INFLUX_TOKEN=""
+  INFLUX_CLI_CFG="${HOME}/.influxdbv2/configs"
+  if [[ -f "${INFLUX_CLI_CFG}" ]]; then
+    INFLUX_TOKEN="$(grep -E '^\s*token\s*=' "${INFLUX_CLI_CFG}" | head -1 \
+      | sed 's/[^=]*=\s*"\?\([^"]*\)"\?/\1/' | tr -d '[:space:]"')"
+  fi
   if [[ -n "${INFLUX_TOKEN}" ]]; then
     python3 - "${CONFIG_YAML}" "${INFLUX_TOKEN}" <<'PYEOF'
 import sys, yaml

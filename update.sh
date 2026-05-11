@@ -80,11 +80,18 @@ if [[ "${SKIP_PULL}" == false ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 1b. Refresh InfluxDB token in config.yaml (fixes stale/wrong token)
+# 2. Update Python dependencies
+# ---------------------------------------------------------------------------
+info "Updating Python dependencies…"
+"${BACKEND_DIR}/.venv/bin/pip" install --quiet --upgrade pip
+"${BACKEND_DIR}/.venv/bin/pip" install --quiet -r "${BACKEND_DIR}/requirements.txt"
+ok "Python dependencies updated"
+
+# ---------------------------------------------------------------------------
+# 2b. Refresh InfluxDB token in config.yaml (runs after pip so pyyaml is available)
 # ---------------------------------------------------------------------------
 CONFIG_YAML="${BACKEND_DIR}/config.yaml"
 if [[ -f "${CONFIG_YAML}" ]]; then
-  # Read token from the influxdb CLI config file (reliable; auth list masks tokens in newer versions)
   INFLUX_TOKEN=""
   INFLUX_CLI_CFG="${HOME}/.influxdbv2/configs"
   if [[ -f "${INFLUX_CLI_CFG}" ]]; then
@@ -104,14 +111,6 @@ PYEOF
     info "InfluxDB token refreshed in config.yaml"
   fi
 fi
-
-# ---------------------------------------------------------------------------
-# 2. Update Python dependencies
-# ---------------------------------------------------------------------------
-info "Updating Python dependencies…"
-"${BACKEND_DIR}/.venv/bin/pip" install --quiet --upgrade pip
-"${BACKEND_DIR}/.venv/bin/pip" install --quiet -r "${BACKEND_DIR}/requirements.txt"
-ok "Python dependencies updated"
 
 # ---------------------------------------------------------------------------
 # 3. Rebuild frontend

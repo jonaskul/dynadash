@@ -32,6 +32,12 @@ The script creates an unprivileged Debian LXC container, installs DynaDash, conf
 
 > **Save the SSH password** shown at the end — it will not be displayed again.
 
+To install from a specific branch, prefix the command with `BRANCH=<branch>`:
+
+```bash
+BRANCH=feature/energy-tab bash -c "$(curl -fsSL https://raw.githubusercontent.com/jonaskul/dynadash/main/run.sh)"
+```
+
 **Default container settings:**
 
 | Setting | Value |

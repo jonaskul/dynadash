@@ -91,3 +91,55 @@ export interface LevelPoint {
   time: string;
   level: number | null;
 }
+
+// ---------------------------------------------------------------------------
+// Energy (Tibber)
+// ---------------------------------------------------------------------------
+
+export interface EnergyStatus {
+  configured: boolean;
+  home_id: string | null;
+  pulse_connected: boolean;
+  last_pulse_ts: string | null;
+  current_price: { total: number; level: string; currency: string } | null;
+  current_power: number | null;
+}
+
+export interface PriceEntry {
+  total: number;
+  energy: number;
+  tax: number;
+  startsAt: string;
+  level: string;
+  currency: string;
+}
+
+export interface PricesResponse {
+  current: PriceEntry | null;
+  today: PriceEntry[];
+  tomorrow: PriceEntry[];
+}
+
+export interface ConsumptionNode {
+  from: string;
+  to: string;
+  cost: number | null;
+  unitPrice: number | null;
+  consumption: number | null;
+  currency: string;
+}
+
+export interface PowerPoint {
+  time: string;
+  power: number | null;
+}
+
+export interface PhasePoint {
+  time: string;
+  voltagePhase1?: number | null;
+  voltagePhase2?: number | null;
+  voltagePhase3?: number | null;
+  currentL1?: number | null;
+  currentL2?: number | null;
+  currentL3?: number | null;
+}

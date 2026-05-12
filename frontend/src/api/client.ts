@@ -1,9 +1,14 @@
 import type {
   AreaConfig,
   AreaState,
+  ConsumptionNode,
+  EnergyStatus,
   GatewayConfig,
   GatewayConfigOut,
   LevelPoint,
+  PhasePoint,
+  PowerPoint,
+  PricesResponse,
   TemperaturePoint,
   TestResult,
 } from "./types";
@@ -147,6 +152,55 @@ export async function getLevelHistory(
     "GET",
     `/history/level?area_id=${areaId}&channel=${channel}&range=${range}`
   );
+}
+
+// ---------------------------------------------------------------------------
+// Energy (Tibber)
+// ---------------------------------------------------------------------------
+
+export async function getEnergyStatus(): Promise<EnergyStatus> {
+  return request<EnergyStatus>("GET", "/energy/status");
+}
+
+export async function getEnergyPrices(): Promise<PricesResponse> {
+  return request<PricesResponse>("GET", "/energy/prices");
+}
+
+export async function getEnergyConsumption(
+  resolution = "HOURLY",
+  last = 24
+): Promise<ConsumptionNode[]> {
+  return request<ConsumptionNode[]>(
+    "GET",
+    `/energy/consumption?resolution=${resolution}&last=${last}`
+  );
+}
+
+export async function getEnergyHistoryPower(range: string): Promise<PowerPoint[]> {
+  return request<PowerPoint[]>("GET", `/energy/history/power?range=${range}`);
+}
+
+export async function getEnergyHistoryPhases(range: string): Promise<PhasePoint[]> {
+  return request<PhasePoint[]>("GET", `/energy/history/phases?range=${range}`);
+}
+
+export async function getEnergyHomes(
+  token?: string
+): Promise<{ id: string; address: { address1: string; city: string } }[]> {
+  const url = token
+    ? `/energy/homes?token=${encodeURIComponent(token)}`
+    : "/energy/homes";
+  return request<{ id: string; address: { address1: string; city: string } }[]>(
+    "GET",
+    url
+  );
+}
+
+export async function saveEnergySettings(
+  token: string,
+  homeId: string
+): Promise<void> {
+  return request<void>("POST", "/energy/settings", { token, home_id: homeId });
 }
 
 // ---------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import { UISettingsProvider } from "./context/UISettings";
 import Navbar from "./components/Navbar";
 import AreaManagerView from "./views/AreaManagerView";
 import ControlView from "./views/ControlView";
+import EnergyView from "./views/EnergyView";
 import HistoryView from "./views/HistoryView";
 import SettingsView from "./views/SettingsView";
 import SetupView from "./views/SetupView";
@@ -49,6 +50,14 @@ export default function App() {
               element={
                 <Layout>
                   <HistoryView />
+                </Layout>
+              }
+            />
+            <Route
+              path="/energy"
+              element={
+                <Layout>
+                  <EnergyView />
                 </Layout>
               }
             />

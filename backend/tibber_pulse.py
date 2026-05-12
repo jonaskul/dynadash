@@ -32,19 +32,19 @@ _LIVE_MEASUREMENT_QUERY = """subscription($homeId: ID!) {
     }
 }"""
 
-_PRICE_QUERY = """{ viewer { home(id: "{home_id}") {
-    currentSubscription { priceInfo {
-        current { total energy tax startsAt level currency }
-        today   { total energy tax startsAt level currency }
-        tomorrow { total energy tax startsAt level currency }
-    } }
-} } }"""
+_PRICE_QUERY = """{{ viewer {{ home(id: "{home_id}") {{
+    currentSubscription {{ priceInfo {{
+        current {{ total energy tax startsAt level currency }}
+        today   {{ total energy tax startsAt level currency }}
+        tomorrow {{ total energy tax startsAt level currency }}
+    }} }}
+}} }} }}"""
 
-_CONSUMPTION_QUERY = """{ viewer { home(id: "{home_id}") {
-    consumption(resolution: HOURLY, last: 720) {
-        nodes { from to cost unitPrice consumption currency }
-    }
-} } }"""
+_CONSUMPTION_QUERY = """{{ viewer {{ home(id: "{home_id}") {{
+    consumption(resolution: HOURLY, last: 720) {{
+        nodes {{ from to cost unitPrice consumption currency }}
+    }}
+}} }} }}"""
 
 
 def _influx_client():
@@ -167,8 +167,10 @@ class TibberPulseManager:
                         self._last_measurement = lm
                         self._last_ts = lm.get("timestamp")
                         await asyncio.to_thread(self._write_pulse, home_id, lm)
-                elif mtype in ("ka", "ping"):
+                elif mtype == "ka":
                     pass
+                elif mtype == "ping":
+                    await ws.send(json.dumps({"type": "pong"}))
                 elif mtype == "pong":
                     pass
                 elif mtype == "error":

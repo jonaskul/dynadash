@@ -55,16 +55,17 @@ CODE_CHANGED=false
 
 if [[ "${SKIP_PULL}" == false ]]; then
   BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-  git fetch --quiet origin "$BRANCH"
+  # Use --depth=1 so shallow clones can always fetch the latest commit
+  git fetch --quiet --depth=1 origin "$BRANCH"
   LOCAL=$(git rev-parse HEAD)
-  REMOTE=$(git rev-parse "origin/$BRANCH")
+  REMOTE=$(git rev-parse FETCH_HEAD)
 
   if [[ "$LOCAL" == "$REMOTE" ]] && [[ "$FORCE" == false ]]; then
     echo "Code already up to date (${LOCAL:0:7}) — syncing deps and restarting backend."
     # Fall through: pip install + backend restart still run below.
   else
     CODE_CHANGED=true
-    info "Updating $(git rev-parse --short HEAD) → $(git rev-parse --short "origin/$BRANCH")…"
+    info "Updating $(git rev-parse --short HEAD) → $(git rev-parse --short FETCH_HEAD)…"
 
     if [[ -d "$DATA_DIR" ]]; then
       cp -r "$DATA_DIR" "$DATA_BACKUP"
@@ -72,7 +73,7 @@ if [[ "${SKIP_PULL}" == false ]]; then
     fi
 
     # Hard-reset to remote (avoids conflicts from file-mode changes made by previous run)
-    git reset --hard "origin/$BRANCH"
+    git reset --hard FETCH_HEAD
     ok "Code updated to $(git rev-parse --short HEAD)"
 
     # Restore execute bit (GitHub API pushes scripts as non-executable)

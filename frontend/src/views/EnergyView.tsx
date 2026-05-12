@@ -695,8 +695,8 @@ export default function EnergyView() {
       {prices && <PriceChartSection prices={prices} />}
       <StatsCards status={status} prices={prices} consumption={consumption} />
       <PowerHistoryPanel enabled={status.configured} />
-      <PhaseHistoryPanel type="voltage" title="Voltage" enabled={status.configured} />
       <PhaseHistoryPanel type="current" title="Current" enabled={status.configured} />
+      <PhaseHistoryPanel type="voltage" title="Voltage" enabled={status.configured} />
     </div>
   );
 }

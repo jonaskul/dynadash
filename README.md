@@ -1,11 +1,12 @@
 # DynaDash
 
-A home automation dashboard for Dynalite lighting and HVAC control. React + Vite + Tailwind frontend, Python FastAPI backend, InfluxDB v2 for time-series history.
+A home automation dashboard for Dynalite lighting, HVAC control, and electricity monitoring. React + Vite + Tailwind frontend, Python FastAPI backend, InfluxDB v2 for time-series history.
 
 ## Features
 
 - **Control** — lighting preset and channel-level control; thermostat setpoint adjustment with 24h min/max and trend indicator
 - **History** — all areas as stacked charts sorted by Display Order; 1h / 6h / 24h / 7d ranges
+- **Energy** — Tibber electricity prices (hourly bar chart with price-level colours), live Pulse power (2 s polling), today's cost and usage, power history (1h / 6h / 24h / 7d), and per-phase current and voltage history
 - **Area Manager** — add, edit, and delete areas from the UI; supports rated wattage for consumption display
 - **Settings** — gateway config, polling interval (1–60 min), light/dark mode, 24h/12h clock
 - **Import / Export** — back up all areas and history to a single JSON file; restore on any instance
@@ -17,6 +18,7 @@ A home automation dashboard for Dynalite lighting and HVAC control. React + Vite
 
 - Proxmox VE host with internet access
 - A Dynalite Ethernet Gateway (PDEG or compatible) reachable on the local network
+- *(Optional)* A Tibber account with API access for the Energy tab
 
 ---
 
@@ -31,12 +33,6 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/jonaskul/dynadash/main/r
 The script creates an unprivileged Debian LXC container, installs DynaDash, configures root auto-login on the PVE console, enables SSH, and prints the dashboard URL and SSH credentials when done.
 
 > **Save the SSH password** shown at the end — it will not be displayed again.
-
-To install from a specific branch, prefix the command with `BRANCH=<branch>`:
-
-```bash
-BRANCH=feature/energy-tab bash -c "$(curl -fsSL https://raw.githubusercontent.com/jonaskul/dynadash/main/run.sh)"
-```
 
 **Default container settings:**
 
@@ -71,6 +67,14 @@ Advanced settings (CT ID, RAM, disk, CPU, static IP) can be configured when prom
    - **Presets** — map preset numbers to labels (e.g. `1 → Full`, `2 → Evening`)
    - **Temp min/max** — setpoint limits (thermostat only)
 5. Go to **Control** to see your area cards and start controlling.
+
+### Energy tab (optional)
+
+1. Go to **Energy** and click **Connect Tibber**.
+2. Paste your Tibber API token (find it at [developer.tibber.com](https://developer.tibber.com/settings/access-token)).
+3. Click **Load homes**, select your home, and click **Save**.
+
+Electricity prices and consumption history appear immediately. If you have a Tibber Pulse, live power data starts streaming within a few seconds.
 
 ---
 
@@ -128,6 +132,7 @@ Browser → nginx (port 80)
                │
                ├── /api/  → FastAPI (uvicorn :8000)
                │              ├── Dynalite CGI gateway (HTTP or HTTPS)
+               │              ├── Tibber API / WebSocket (optional)
                │              └── InfluxDB v2 (localhost:8086)
                └── /*     → /var/www/dynadash (React SPA)
 ```
@@ -139,6 +144,7 @@ Data files in `backend/data/` (not in source control):
 | `gateway.json` | Gateway IP, scheme, auth |
 | `areas.json` | Area definitions |
 | `settings.json` | Polling interval |
+| `tibber.db` | Tibber token and home ID (SQLite) |
 
 ---
 

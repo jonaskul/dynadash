@@ -141,16 +141,29 @@ function CollapsiblePanel({
   title,
   right,
   children,
+  storageKey,
 }: {
   title: string;
   right?: React.ReactNode;
   children: React.ReactNode;
+  storageKey?: string;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => {
+    if (storageKey) {
+      const v = localStorage.getItem(storageKey);
+      if (v !== null) return v === "true";
+    }
+    return true;
+  });
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (storageKey) localStorage.setItem(storageKey, String(next));
+  }
   return (
     <div className="rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm">
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className="flex w-full items-center justify-between px-5 py-4 text-left"
       >
         <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{title}</span>
@@ -350,7 +363,7 @@ function PriceChartSection({ prices }: { prices: PricesResponse }) {
   const chartData = buildChartData(prices);
 
   return (
-    <CollapsiblePanel title="Electricity prices">
+    <CollapsiblePanel title="Electricity prices" storageKey="energy-open-prices">
       <ResponsiveContainer width="100%" height={240}>
         <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid stroke={gridColor} strokeDasharray="3 3" vertical={false} />
@@ -495,7 +508,7 @@ function PowerHistoryPanel({ enabled }: { enabled: boolean }) {
     : { backgroundColor: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#f8fafc", fontSize: 12 };
 
   return (
-    <CollapsiblePanel title="Power history" right={<RangeSelector value={range} onChange={setRange} />}>
+    <CollapsiblePanel title="Power history" storageKey="energy-open-power" right={<RangeSelector value={range} onChange={setRange} />}>
       {isLoading ? (
         <div className="flex h-[200px] items-center justify-center">
           <div className="h-7 w-7 animate-spin rounded-full border-2 border-electric-blue border-t-transparent" />
@@ -612,7 +625,7 @@ function PhaseHistoryPanel({
   );
 
   return (
-    <CollapsiblePanel title={title} right={legend}>
+    <CollapsiblePanel title={title} storageKey={`energy-open-${type}`} right={legend}>
       {isLoading ? (
         <div className="flex h-[200px] items-center justify-center">
           <div className="h-7 w-7 animate-spin rounded-full border-2 border-electric-blue border-t-transparent" />

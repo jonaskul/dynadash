@@ -97,13 +97,13 @@ function buildChartData(prices: PricesResponse): BarEntry[] {
   return [...todayBars, ...tomorrowBars];
 }
 
-function formatTime(iso: string, range: HistoryRange): string {
+function formatTime(iso: string, range: HistoryRange, use24h: boolean): string {
   const d = new Date(iso);
   if (range === "7d") {
     return d.toLocaleDateString([], { weekday: "short" }) + " " +
-      d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+      d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: !use24h });
   }
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: !use24h });
 }
 
 function RangeSelector({
@@ -446,7 +446,7 @@ function StatsCards({
 
 function PowerHistoryPanel({ enabled }: { enabled: boolean }) {
   const [range, setRange] = useState<HistoryRange>("1h");
-  const { lightMode } = useUISettings();
+  const { lightMode, use24h } = useUISettings();
 
   const { data: powerHistory = [], isLoading } = useQuery({
     queryKey: ["energy-power", range],
@@ -482,7 +482,7 @@ function PowerHistoryPanel({ enabled }: { enabled: boolean }) {
             <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
             <XAxis
               dataKey="time"
-              tickFormatter={(v) => formatTime(v as string, range)}
+              tickFormatter={(v) => formatTime(v as string, range, use24h)}
               tick={{ fill: axisColor, fontSize: 11 }}
               axisLine={{ stroke: gridColor }}
               tickLine={false}
@@ -498,7 +498,7 @@ function PowerHistoryPanel({ enabled }: { enabled: boolean }) {
             />
             <Tooltip
               contentStyle={tooltipStyle}
-              labelFormatter={(v) => formatTime(v as string, range)}
+              labelFormatter={(v) => formatTime(v as string, range, use24h)}
               formatter={(value: number) => [`${Math.round(value)} W`, "Power"]}
             />
             <Line
@@ -549,7 +549,7 @@ function PhaseHistoryPanel({
   enabled: boolean;
 }) {
   const [range, setRange] = useState<HistoryRange>("1h");
-  const { lightMode } = useUISettings();
+  const { lightMode, use24h } = useUISettings();
   const cfg = PHASE_CONFIG[type];
 
   const { data: phases = [], isLoading } = useQuery({
@@ -600,7 +600,7 @@ function PhaseHistoryPanel({
             <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
             <XAxis
               dataKey="time"
-              tickFormatter={(v) => formatTime(v as string, range)}
+              tickFormatter={(v) => formatTime(v as string, range, use24h)}
               tick={{ fill: axisColor, fontSize: 11 }}
               axisLine={{ stroke: gridColor }}
               tickLine={false}
@@ -616,7 +616,7 @@ function PhaseHistoryPanel({
             />
             <Tooltip
               contentStyle={tooltipStyle}
-              labelFormatter={(v) => formatTime(v as string, range)}
+              labelFormatter={(v) => formatTime(v as string, range, use24h)}
               formatter={(value: number, name: string) => {
                 const idx = (cfg.keys as readonly string[]).indexOf(name);
                 return [`${value.toFixed(cfg.decimals)}${cfg.unit}`, cfg.labels[idx] ?? name];

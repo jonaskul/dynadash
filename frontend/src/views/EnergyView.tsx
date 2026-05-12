@@ -51,8 +51,8 @@ const LEVEL_LABELS: Record<string, string> = {
   VERY_EXPENSIVE: "Very expensive",
 };
 
-const POWER_RANGES = ["1h", "6h", "24h"] as const;
-type PowerRange = (typeof POWER_RANGES)[number];
+const ALL_RANGES = ["1h", "6h", "24h", "7d"] as const;
+type HistoryRange = (typeof ALL_RANGES)[number];
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -95,6 +95,41 @@ function buildChartData(prices: PricesResponse): BarEntry[] {
   }));
 
   return [...todayBars, ...tomorrowBars];
+}
+
+function formatTime(iso: string, range: HistoryRange): string {
+  const d = new Date(iso);
+  if (range === "7d") {
+    return d.toLocaleDateString([], { weekday: "short" }) + " " +
+      d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  }
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function RangeSelector({
+  value,
+  onChange,
+}: {
+  value: HistoryRange;
+  onChange: (r: HistoryRange) => void;
+}) {
+  return (
+    <div className="flex rounded-lg border border-slate-200 overflow-hidden dark:border-white/10">
+      {ALL_RANGES.map((r) => (
+        <button
+          key={r}
+          onClick={() => onChange(r)}
+          className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+            r === value
+              ? "bg-electric-blue text-navy-900"
+              : "bg-white text-slate-500 hover:text-slate-900 hover:bg-slate-50 dark:bg-navy-800 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5"
+          }`}
+        >
+          {r}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -409,17 +444,13 @@ function StatsCards({
 // PowerHistoryPanel
 // ---------------------------------------------------------------------------
 
-function PowerHistoryPanel({
-  enabled,
-}: {
-  enabled: boolean;
-}) {
-  const [powerRange, setPowerRange] = useState<PowerRange>("1h");
+function PowerHistoryPanel({ enabled }: { enabled: boolean }) {
+  const [range, setRange] = useState<HistoryRange>("1h");
   const { lightMode } = useUISettings();
 
   const { data: powerHistory = [], isLoading } = useQuery({
-    queryKey: ["energy-power", powerRange],
-    queryFn: () => getEnergyHistoryPower(powerRange),
+    queryKey: ["energy-power", range],
+    queryFn: () => getEnergyHistoryPower(range),
     staleTime: 30_000,
     enabled,
   });
@@ -430,33 +461,11 @@ function PowerHistoryPanel({
     ? { backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 8, color: "#0f172a", fontSize: 12 }
     : { backgroundColor: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#f8fafc", fontSize: 12 };
 
-  function formatTime(iso: string): string {
-    return new Date(iso).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  }
-
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Power history</h2>
-        <div className="flex rounded-lg border border-slate-200 overflow-hidden dark:border-white/10">
-          {POWER_RANGES.map((r) => (
-            <button
-              key={r}
-              onClick={() => setPowerRange(r)}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                r === powerRange
-                  ? "bg-electric-blue text-navy-900"
-                  : "bg-white text-slate-500 hover:text-slate-900 hover:bg-slate-50 dark:bg-navy-800 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5"
-              }`}
-            >
-              {r}
-            </button>
-          ))}
-        </div>
+        <RangeSelector value={range} onChange={setRange} />
       </div>
 
       {isLoading ? (
@@ -469,14 +478,11 @@ function PowerHistoryPanel({
         </div>
       ) : (
         <ResponsiveContainer width="100%" height={200}>
-          <LineChart
-            data={powerHistory as PowerPoint[]}
-            margin={{ top: 8, right: 16, bottom: 0, left: 0 }}
-          >
+          <LineChart data={powerHistory as PowerPoint[]} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
             <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
             <XAxis
               dataKey="time"
-              tickFormatter={(v) => formatTime(v as string)}
+              tickFormatter={(v) => formatTime(v as string, range)}
               tick={{ fill: axisColor, fontSize: 11 }}
               axisLine={{ stroke: gridColor }}
               tickLine={false}
@@ -492,7 +498,7 @@ function PowerHistoryPanel({
             />
             <Tooltip
               contentStyle={tooltipStyle}
-              labelFormatter={(v) => formatTime(v as string)}
+              labelFormatter={(v) => formatTime(v as string, range)}
               formatter={(value: number) => [`${Math.round(value)} W`, "Power"]}
             />
             <Line
@@ -514,18 +520,37 @@ function PowerHistoryPanel({
 // PhaseHistoryPanel
 // ---------------------------------------------------------------------------
 
-const PHASE_COLORS = {
-  L1: "#f97316",
-  L2: "#a78bfa",
-  L3: "#34d399",
+const PHASE_COLORS = ["#f97316", "#a78bfa", "#34d399"];
+
+const PHASE_CONFIG = {
+  voltage: {
+    keys: ["voltagePhase1", "voltagePhase2", "voltagePhase3"] as const,
+    labels: ["L1 (V)", "L2 (V)", "L3 (V)"],
+    unit: " V" as const,
+    yWidth: 52,
+    decimals: 1,
+  },
+  current: {
+    keys: ["currentL1", "currentL2", "currentL3"] as const,
+    labels: ["L1 (A)", "L2 (A)", "L3 (A)"],
+    unit: " A" as const,
+    yWidth: 44,
+    decimals: 2,
+  },
 };
 
-type PhaseTab = "voltage" | "current";
-
-function PhaseHistoryPanel({ enabled }: { enabled: boolean }) {
-  const [range, setRange] = useState<PowerRange>("1h");
-  const [tab, setTab] = useState<PhaseTab>("voltage");
+function PhaseHistoryPanel({
+  type,
+  title,
+  enabled,
+}: {
+  type: "voltage" | "current";
+  title: string;
+  enabled: boolean;
+}) {
+  const [range, setRange] = useState<HistoryRange>("1h");
   const { lightMode } = useUISettings();
+  const cfg = PHASE_CONFIG[type];
 
   const { data: phases = [], isLoading } = useQuery({
     queryKey: ["energy-phases", range],
@@ -540,65 +565,25 @@ function PhaseHistoryPanel({ enabled }: { enabled: boolean }) {
     ? { backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 8, color: "#0f172a", fontSize: 12 }
     : { backgroundColor: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#f8fafc", fontSize: 12 };
 
-  function formatTime(iso: string): string {
-    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-  }
-
-  const isVoltage = tab === "voltage";
-  const keys = isVoltage
-    ? (["voltagePhase1", "voltagePhase2", "voltagePhase3"] as const)
-    : (["currentL1", "currentL2", "currentL3"] as const);
-  const labels = isVoltage
-    ? ["L1 (V)", "L2 (V)", "L3 (V)"]
-    : ["L1 (A)", "L2 (A)", "L3 (A)"];
-  const unit = isVoltage ? " V" : " A";
-  const colors = [PHASE_COLORS.L1, PHASE_COLORS.L2, PHASE_COLORS.L3];
-
-  const hasData = phases.length > 0 && phases.some((p) => keys.some((k) => p[k] != null));
+  const hasData = phases.length > 0 && phases.some((p) =>
+    cfg.keys.some((k) => p[k as keyof PhasePoint] != null)
+  );
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex rounded-lg border border-slate-200 overflow-hidden dark:border-white/10">
-          {(["voltage", "current"] as PhaseTab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                t === tab
-                  ? "bg-electric-blue text-navy-900"
-                  : "bg-white text-slate-500 hover:text-slate-900 hover:bg-slate-50 dark:bg-navy-800 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5"
-              }`}
-            >
-              {t === "voltage" ? "Voltage" : "Current"}
-            </button>
-          ))}
-        </div>
         <div className="flex items-center gap-3">
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{title}</h2>
           <div className="flex gap-3">
-            {colors.map((c, i) => (
+            {PHASE_COLORS.map((c, i) => (
               <span key={i} className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
                 <span className="inline-block h-2 w-4 rounded-sm" style={{ backgroundColor: c }} />
                 {`L${i + 1}`}
               </span>
             ))}
           </div>
-          <div className="flex rounded-lg border border-slate-200 overflow-hidden dark:border-white/10">
-            {POWER_RANGES.map((r) => (
-              <button
-                key={r}
-                onClick={() => setRange(r)}
-                className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-                  r === range
-                    ? "bg-electric-blue text-navy-900"
-                    : "bg-white text-slate-500 hover:text-slate-900 hover:bg-slate-50 dark:bg-navy-800 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5"
-                }`}
-              >
-                {r}
-              </button>
-            ))}
-          </div>
         </div>
+        <RangeSelector value={range} onChange={setRange} />
       </div>
 
       {isLoading ? (
@@ -615,7 +600,7 @@ function PhaseHistoryPanel({ enabled }: { enabled: boolean }) {
             <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
             <XAxis
               dataKey="time"
-              tickFormatter={(v) => formatTime(v as string)}
+              tickFormatter={(v) => formatTime(v as string, range)}
               tick={{ fill: axisColor, fontSize: 11 }}
               axisLine={{ stroke: gridColor }}
               tickLine={false}
@@ -625,27 +610,27 @@ function PhaseHistoryPanel({ enabled }: { enabled: boolean }) {
               tick={{ fill: axisColor, fontSize: 11 }}
               axisLine={{ stroke: gridColor }}
               tickLine={false}
-              unit={unit}
-              width={isVoltage ? 52 : 44}
+              unit={cfg.unit}
+              width={cfg.yWidth}
               domain={["auto", "auto"]}
             />
             <Tooltip
               contentStyle={tooltipStyle}
-              labelFormatter={(v) => formatTime(v as string)}
+              labelFormatter={(v) => formatTime(v as string, range)}
               formatter={(value: number, name: string) => {
-                const idx = (keys as readonly string[]).indexOf(name);
-                return [`${value.toFixed(isVoltage ? 1 : 2)}${unit}`, labels[idx] ?? name];
+                const idx = (cfg.keys as readonly string[]).indexOf(name);
+                return [`${value.toFixed(cfg.decimals)}${cfg.unit}`, cfg.labels[idx] ?? name];
               }}
             />
-            {keys.map((k, i) => (
+            {cfg.keys.map((k, i) => (
               <Line
                 key={k}
                 type="monotone"
                 dataKey={k}
-                stroke={colors[i]}
+                stroke={PHASE_COLORS[i]}
                 strokeWidth={2}
                 dot={false}
-                activeDot={{ r: 4, fill: colors[i] }}
+                activeDot={{ r: 4, fill: PHASE_COLORS[i] }}
                 connectNulls
               />
             ))}
@@ -710,7 +695,8 @@ export default function EnergyView() {
       {prices && <PriceChartSection prices={prices} />}
       <StatsCards status={status} prices={prices} consumption={consumption} />
       <PowerHistoryPanel enabled={status.configured} />
-      <PhaseHistoryPanel enabled={status.configured} />
+      <PhaseHistoryPanel type="voltage" title="Voltage" enabled={status.configured} />
+      <PhaseHistoryPanel type="current" title="Current" enabled={status.configured} />
     </div>
   );
 }

@@ -6,7 +6,7 @@ import os
 import subprocess
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +25,16 @@ def _git(*args: str) -> str:
 
 @router.get("")
 async def check_update() -> dict[str, Any]:
-    await asyncio.to_thread(
+    fetch = await asyncio.to_thread(
         subprocess.run,
         ["git", "fetch", "origin", "main", "--depth=50"],
-        cwd=APP_DIR, capture_output=True, timeout=30,
+        cwd=APP_DIR, capture_output=True, text=True, timeout=30,
     )
+    if fetch.returncode != 0:
+        detail = fetch.stderr.strip() or "git fetch failed — check network connectivity"
+        logger.warning("git fetch failed: %s", detail)
+        raise HTTPException(status_code=503, detail=detail)
+
     current = await asyncio.to_thread(_git, "rev-parse", "HEAD")
     latest = await asyncio.to_thread(_git, "rev-parse", "FETCH_HEAD")
 

@@ -20,6 +20,47 @@ function sortAreas(areas: AreaConfig[]): AreaConfig[] {
 }
 
 // ---------------------------------------------------------------------------
+// CollapsiblePanel (same style as Energy tab)
+// ---------------------------------------------------------------------------
+
+function CollapsiblePanel({
+  title,
+  children,
+  storageKey,
+}: {
+  title: string;
+  children: React.ReactNode;
+  storageKey?: string;
+}) {
+  const [open, setOpen] = useState(() => {
+    if (storageKey) {
+      const v = localStorage.getItem(storageKey);
+      if (v !== null) return v === "true";
+    }
+    return true;
+  });
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (storageKey) localStorage.setItem(storageKey, String(next));
+  }
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm">
+      <button
+        onClick={toggle}
+        className="flex w-full items-center justify-between px-5 py-4 text-left"
+      >
+        <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{title}</span>
+        <ChevronDown
+          className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
+        />
+      </button>
+      {open && <div className="px-5 pb-5 space-y-4">{children}</div>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Per-chart panels (each manages its own query)
 // ---------------------------------------------------------------------------
 
@@ -45,12 +86,7 @@ function ThermostatChartPanel({ areaId, range }: { areaId: number; range: Range 
     queryFn: () => getTemperatureHistory(areaId, range),
     staleTime: 30_000,
   });
-
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm">
-      {isLoading ? <Spinner /> : data.length === 0 ? <Empty /> : <TemperatureChart data={data} />}
-    </div>
-  );
+  return isLoading ? <Spinner /> : data.length === 0 ? <Empty /> : <TemperatureChart data={data} />;
 }
 
 function LightingChartPanel({
@@ -69,9 +105,8 @@ function LightingChartPanel({
     queryFn: () => getLevelHistory(areaId, channel, range),
     staleTime: 30_000,
   });
-
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm">
+    <div>
       {channels > 1 && (
         <p className="mb-3 text-xs font-medium text-slate-400 dark:text-slate-500">
           Channel {channel}
@@ -87,33 +122,12 @@ function LightingChartPanel({
 // ---------------------------------------------------------------------------
 
 function AreaHistorySection({ area, range }: { area: AreaConfig; range: Range }) {
-  const storageKey = `history-open-${area.id}`;
-  const [open, setOpen] = useState(() => {
-    const v = localStorage.getItem(storageKey);
-    return v === null ? true : v === "true";
-  });
-
-  function toggle() {
-    const next = !open;
-    setOpen(next);
-    localStorage.setItem(storageKey, String(next));
-  }
-
   return (
-    <section className="space-y-3">
-      <button
-        onClick={toggle}
-        className="flex w-full items-center justify-between"
-      >
-        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{area.name}</h2>
-        <ChevronDown
-          className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
-        />
-      </button>
-      {open && (area.type === "thermostat" ? (
+    <CollapsiblePanel title={area.name} storageKey={`history-open-${area.id}`}>
+      {area.type === "thermostat" ? (
         <ThermostatChartPanel areaId={area.id} range={range} />
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-4">
           {Array.from({ length: area.channels }, (_, i) => i + 1).map((ch) => (
             <LightingChartPanel
               key={ch}
@@ -124,8 +138,8 @@ function AreaHistorySection({ area, range }: { area: AreaConfig; range: Range })
             />
           ))}
         </div>
-      ))}
-    </section>
+      )}
+    </CollapsiblePanel>
   );
 }
 
@@ -174,7 +188,7 @@ export default function HistoryView() {
       ) : sorted.length === 0 ? (
         <p className="text-slate-500">No areas configured.</p>
       ) : (
-        <div className="space-y-8">
+        <div className="space-y-4">
           {sorted.map((area) => (
             <AreaHistorySection key={area.id} area={area} range={range} />
           ))}

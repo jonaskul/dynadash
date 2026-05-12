@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from poller import poller
-from routers import areas, backup, config_areas, gateway, history, settings
+from routers import areas, backup, config_areas, gateway, history, settings, update
 from tibber import router as tibber_router
 from tibber_db import get_setting, init_db
 from tibber_pulse import pulse_manager, rest_poller
@@ -58,6 +58,7 @@ app.include_router(history.router)
 app.include_router(settings.router)
 app.include_router(backup.router)
 app.include_router(tibber_router)
+app.include_router(update.router)
 
 
 @app.get("/api/health")

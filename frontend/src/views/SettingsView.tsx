@@ -1,7 +1,8 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, Download, Loader2, Moon, Sun, Trash2, Upload } from "lucide-react";
-import { useRef, useState } from "react";
-import { deleteGateway, getAppSettings, getGateway, importBackup, saveAppSettings, saveGateway, testGateway } from "../api/client";
+import { ArrowDownToLine, CheckCircle2, Clock, Download, Loader2, Moon, RefreshCw, Sun, Trash2, Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { applyUpdate, checkUpdate, deleteGateway, getAppSettings, getGateway, importBackup, saveAppSettings, saveGateway, testGateway } from "../api/client";
+import type { UpdateStatus } from "../api/types";
 import { useUISettings } from "../context/UISettings";
 
 declare const __BUILD_TIME__: string;
@@ -308,6 +309,184 @@ function BackupSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Software update section
+// ---------------------------------------------------------------------------
+
+type UpdatePhase =
+  | "idle"
+  | "checking"
+  | "up_to_date"
+  | "available"
+  | "applying"
+  | "restarting"
+  | "done";
+
+function SoftwareSection() {
+  const [phase, setPhase] = useState<UpdatePhase>("idle");
+  const [info, setInfo] = useState<UpdateStatus | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleCheck() {
+    setPhase("checking");
+    setError(null);
+    try {
+      const status = await checkUpdate();
+      setInfo(status);
+      setPhase(status.up_to_date ? "up_to_date" : "available");
+    } catch (e) {
+      setError(String(e));
+      setPhase("idle");
+    }
+  }
+
+  async function handleApply() {
+    setPhase("applying");
+    setError(null);
+    try {
+      await applyUpdate();
+      setPhase("restarting");
+    } catch (e) {
+      setError(String(e));
+      setPhase("available");
+    }
+  }
+
+  useEffect(() => {
+    if (phase !== "restarting") return;
+    let stopped = false;
+    const poll = async () => {
+      while (!stopped) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const res = await fetch("/api/health");
+          if (res.ok) {
+            if (!stopped) {
+              setPhase("done");
+              setTimeout(() => window.location.reload(), 1500);
+            }
+            return;
+          }
+        } catch {
+          // backend still down — keep polling
+        }
+      }
+    };
+    poll();
+    return () => { stopped = true; };
+  }, [phase]);
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-4 dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm">
+      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Software Update</h2>
+
+      {phase === "idle" && (
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-slate-500">Check for new versions from GitHub.</p>
+          <button
+            onClick={handleCheck}
+            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition dark:border-white/15 dark:bg-white/5 dark:text-slate-300 dark:hover:text-white dark:hover:bg-white/10"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Check for updates
+          </button>
+        </div>
+      )}
+
+      {phase === "checking" && (
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Checking for updates…
+        </div>
+      )}
+
+      {phase === "up_to_date" && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+            <CheckCircle2 className="h-4 w-4" />
+            Up to date
+            {info && (
+              <span className="font-mono text-xs text-slate-400 dark:text-slate-500">
+                ({info.current_sha})
+              </span>
+            )}
+          </div>
+          <button
+            onClick={handleCheck}
+            className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition"
+          >
+            Check again
+          </button>
+        </div>
+      )}
+
+      {phase === "available" && info && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-slate-600 dark:text-slate-300">
+              {info.commits.length} new {info.commits.length === 1 ? "commit" : "commits"} available
+            </span>
+            <span className="font-mono text-xs text-slate-400">
+              {info.current_sha} → {info.latest_sha}
+            </span>
+          </div>
+
+          {info.commits.length > 0 && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 divide-y divide-slate-100 dark:border-white/10 dark:bg-white/5 dark:divide-white/5">
+              {info.commits.map((c) => (
+                <div key={c.sha} className="flex items-baseline gap-3 px-3 py-2">
+                  <span className="shrink-0 font-mono text-xs text-slate-400 dark:text-slate-500">{c.sha}</span>
+                  <span className="flex-1 text-xs text-slate-700 dark:text-slate-300">{c.message}</span>
+                  <span className="shrink-0 text-xs text-slate-400 dark:text-slate-500">{c.date}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleApply}
+              className="flex items-center gap-2 rounded-lg bg-electric-blue px-4 py-2 text-sm font-semibold text-navy-900 hover:bg-electric-blue-light transition"
+            >
+              <ArrowDownToLine className="h-4 w-4" />
+              Update now
+            </button>
+            <button
+              onClick={() => setPhase("idle")}
+              className="text-sm text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "applying" && (
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Applying update…
+        </div>
+      )}
+
+      {phase === "restarting" && (
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Restarting service… this may take 20–30 seconds.
+        </div>
+      )}
+
+      {phase === "done" && (
+        <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+          <CheckCircle2 className="h-4 w-4" />
+          Updated! Reloading…
+        </div>
+      )}
+
+      {error && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main settings view
 // ---------------------------------------------------------------------------
 
@@ -469,6 +648,9 @@ export default function SettingsView() {
 
       {/* Polling interval */}
       <PollingIntervalSection />
+
+      {/* Software update */}
+      <SoftwareSection />
 
       {/* Version */}
       <div className="flex justify-end">

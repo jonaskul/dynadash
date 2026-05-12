@@ -11,6 +11,7 @@ import type {
   PricesResponse,
   TemperaturePoint,
   TestResult,
+  UpdateStatus,
 } from "./types";
 
 const BASE = "/api";
@@ -201,6 +202,18 @@ export async function saveEnergySettings(
   homeId: string
 ): Promise<void> {
   return request<void>("POST", "/energy/settings", { token, home_id: homeId });
+}
+
+// ---------------------------------------------------------------------------
+// Software update
+// ---------------------------------------------------------------------------
+
+export async function checkUpdate(): Promise<UpdateStatus> {
+  return request<UpdateStatus>("GET", "/update");
+}
+
+export async function applyUpdate(): Promise<{ status: string }> {
+  return request<{ status: string }>("POST", "/update/apply");
 }
 
 // ---------------------------------------------------------------------------

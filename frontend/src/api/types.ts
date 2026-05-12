@@ -143,3 +143,20 @@ export interface PhasePoint {
   currentL2?: number | null;
   currentL3?: number | null;
 }
+
+// ---------------------------------------------------------------------------
+// Software update
+// ---------------------------------------------------------------------------
+
+export interface UpdateCommit {
+  sha: string;
+  message: string;
+  date: string;
+}
+
+export interface UpdateStatus {
+  up_to_date: boolean;
+  current_sha: string;
+  latest_sha: string;
+  commits: UpdateCommit[];
+}

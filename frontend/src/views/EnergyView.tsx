@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bar,
@@ -128,6 +129,39 @@ function RangeSelector({
           {r}
         </button>
       ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CollapsiblePanel
+// ---------------------------------------------------------------------------
+
+function CollapsiblePanel({
+  title,
+  right,
+  children,
+}: {
+  title: string;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-5 py-4 text-left"
+      >
+        <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{title}</span>
+        <div className="flex items-center gap-3">
+          {right && <div onClick={(e) => e.stopPropagation()}>{right}</div>}
+          <ChevronDown
+            className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
+          />
+        </div>
+      </button>
+      {open && <div className="px-5 pb-5 space-y-4">{children}</div>}
     </div>
   );
 }
@@ -316,8 +350,7 @@ function PriceChartSection({ prices }: { prices: PricesResponse }) {
   const chartData = buildChartData(prices);
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm">
-      <h2 className="mb-4 text-sm font-semibold text-slate-700 dark:text-slate-300">Electricity prices</h2>
+    <CollapsiblePanel title="Electricity prices">
       <ResponsiveContainer width="100%" height={240}>
         <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid stroke={gridColor} strokeDasharray="3 3" vertical={false} />
@@ -372,7 +405,7 @@ function PriceChartSection({ prices }: { prices: PricesResponse }) {
           </Bar>
         </BarChart>
       </ResponsiveContainer>
-    </div>
+    </CollapsiblePanel>
   );
 }
 
@@ -462,12 +495,7 @@ function PowerHistoryPanel({ enabled }: { enabled: boolean }) {
     : { backgroundColor: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#f8fafc", fontSize: 12 };
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Power history</h2>
-        <RangeSelector value={range} onChange={setRange} />
-      </div>
-
+    <CollapsiblePanel title="Power history" right={<RangeSelector value={range} onChange={setRange} />}>
       {isLoading ? (
         <div className="flex h-[200px] items-center justify-center">
           <div className="h-7 w-7 animate-spin rounded-full border-2 border-electric-blue border-t-transparent" />
@@ -512,7 +540,7 @@ function PowerHistoryPanel({ enabled }: { enabled: boolean }) {
           </LineChart>
         </ResponsiveContainer>
       )}
-    </div>
+    </CollapsiblePanel>
   );
 }
 
@@ -569,23 +597,22 @@ function PhaseHistoryPanel({
     cfg.keys.some((k) => p[k as keyof PhasePoint] != null)
   );
 
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-2">
-        <div className="flex items-center gap-3">
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{title}</h2>
-          <div className="flex gap-3">
-            {PHASE_COLORS.map((c, i) => (
-              <span key={i} className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-                <span className="inline-block h-2 w-4 rounded-sm" style={{ backgroundColor: c }} />
-                {`L${i + 1}`}
-              </span>
-            ))}
-          </div>
-        </div>
-        <RangeSelector value={range} onChange={setRange} />
+  const legend = (
+    <div className="flex items-center gap-3">
+      <div className="flex gap-3">
+        {PHASE_COLORS.map((c, i) => (
+          <span key={i} className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
+            <span className="inline-block h-2 w-4 rounded-sm" style={{ backgroundColor: c }} />
+            {`L${i + 1}`}
+          </span>
+        ))}
       </div>
+      <RangeSelector value={range} onChange={setRange} />
+    </div>
+  );
 
+  return (
+    <CollapsiblePanel title={title} right={legend}>
       {isLoading ? (
         <div className="flex h-[200px] items-center justify-center">
           <div className="h-7 w-7 animate-spin rounded-full border-2 border-electric-blue border-t-transparent" />
@@ -637,7 +664,7 @@ function PhaseHistoryPanel({
           </LineChart>
         </ResponsiveContainer>
       )}
-    </div>
+    </CollapsiblePanel>
   );
 }
 
@@ -691,9 +718,9 @@ export default function EnergyView() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 space-y-6">
       <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Energy</h1>
+      <StatsCards status={status} prices={prices} consumption={consumption} />
       <StatusBar status={status} />
       {prices && <PriceChartSection prices={prices} />}
-      <StatsCards status={status} prices={prices} consumption={consumption} />
       <PowerHistoryPanel enabled={status.configured} />
       <PhaseHistoryPanel type="current" title="Current" enabled={status.configured} />
       <PhaseHistoryPanel type="voltage" title="Voltage" enabled={status.configured} />

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { ChevronDown } from "lucide-react";
 import { useState } from "react";
 import {
   getConfigAreas,
@@ -86,10 +87,30 @@ function LightingChartPanel({
 // ---------------------------------------------------------------------------
 
 function AreaHistorySection({ area, range }: { area: AreaConfig; range: Range }) {
+  const storageKey = `history-open-${area.id}`;
+  const [open, setOpen] = useState(() => {
+    const v = localStorage.getItem(storageKey);
+    return v === null ? true : v === "true";
+  });
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    localStorage.setItem(storageKey, String(next));
+  }
+
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{area.name}</h2>
-      {area.type === "thermostat" ? (
+      <button
+        onClick={toggle}
+        className="flex w-full items-center justify-between"
+      >
+        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">{area.name}</h2>
+        <ChevronDown
+          className={`h-4 w-4 text-slate-400 transition-transform duration-200 ${open ? "" : "-rotate-90"}`}
+        />
+      </button>
+      {open && (area.type === "thermostat" ? (
         <ThermostatChartPanel areaId={area.id} range={range} />
       ) : (
         <div className="space-y-3">
@@ -103,7 +124,7 @@ function AreaHistorySection({ area, range }: { area: AreaConfig; range: Range })
             />
           ))}
         </div>
-      )}
+      ))}
     </section>
   );
 }

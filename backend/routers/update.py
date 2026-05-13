@@ -65,7 +65,15 @@ def _run_update() -> None:
         f"git -C {APP_DIR} reset --hard FETCH_HEAD && "
         f"bash {APP_DIR}/update.sh --skip-pull --force"
     )
-    subprocess.Popen(["bash", "-c", cmd], cwd=APP_DIR)
+    # systemd-run places the process in its own transient unit/cgroup so it
+    # survives when update.sh restarts the dynadash-backend service (which
+    # would otherwise kill child processes via cgroup teardown).
+    subprocess.Popen(
+        ["systemd-run", "--no-block", "--unit=dynadash-gui-update",
+         "bash", "-c", cmd],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 @router.post("/apply")

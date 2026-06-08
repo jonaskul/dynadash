@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
@@ -17,6 +18,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+async def _log_task_count() -> None:
+    while True:
+        await asyncio.sleep(300)
+        n = len(asyncio.all_tasks())
+        logger.info("asyncio live tasks: %d", n)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("DynaDash backend starting — launching poller")
@@ -28,8 +36,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.info("Starting Tibber services (home %s)", home_id)
         await pulse_manager.start(token, home_id)
         await rest_poller.start(token, home_id)
+    task_logger = asyncio.create_task(_log_task_count(), name="task-count-logger")
     yield
     logger.info("DynaDash backend shutting down")
+    task_logger.cancel()
     poller.stop()
     pulse_manager.stop()
     rest_poller.stop()

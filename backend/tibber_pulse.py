@@ -126,9 +126,9 @@ class TibberPulseManager:
             # Wait for connection_ack
             self._connected = False
             ack_received = False
-            deadline = asyncio.get_event_loop().time() + 30
-            while asyncio.get_event_loop().time() < deadline:
-                remaining = deadline - asyncio.get_event_loop().time()
+            deadline = asyncio.get_running_loop().time() + 30
+            while asyncio.get_running_loop().time() < deadline:
+                remaining = deadline - asyncio.get_running_loop().time()
                 try:
                     raw = await asyncio.wait_for(ws.recv(), timeout=remaining)
                 except asyncio.TimeoutError:

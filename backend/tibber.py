@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -125,7 +126,6 @@ async def energy_status() -> dict[str, Any]:
     current_price: Optional[dict[str, Any]] = None
     if configured and home_id:
         try:
-            from influxdb_client import InfluxDBClient
             flux = f"""
 from(bucket: "{config.influxdb.bucket}")
   |> range(start: -2h)
@@ -133,19 +133,26 @@ from(bucket: "{config.influxdb.bucket}")
   |> filter(fn: (r) => r._field == "total")
   |> last()
 """
-            with InfluxDBClient(
-                url=config.influxdb.url,
-                token=config.influxdb.token,
-                org=config.influxdb.org,
-            ) as client:
-                tables = client.query_api().query(flux)
-            for table in tables:
-                for record in table.records:
-                    current_price = {
-                        "total": record.get_value(),
-                        "level": record.values.get("level"),
-                        "currency": record.values.get("currency"),
-                    }
+            def _query_price() -> list[dict[str, Any]]:
+                from influxdb_client import InfluxDBClient
+                with InfluxDBClient(
+                    url=config.influxdb.url,
+                    token=config.influxdb.token,
+                    org=config.influxdb.org,
+                ) as client:
+                    tables = client.query_api().query(flux)
+                rows = []
+                for table in tables:
+                    for record in table.records:
+                        rows.append({
+                            "total": record.get_value(),
+                            "level": record.values.get("level"),
+                            "currency": record.values.get("currency"),
+                        })
+                return rows
+            price_rows = await asyncio.to_thread(_query_price)
+            if price_rows:
+                current_price = price_rows[-1]
         except Exception:
             pass
 
@@ -159,7 +166,7 @@ from(bucket: "{config.influxdb.bucket}")
   |> filter(fn: (r) => r._field == "power")
   |> last()
 """
-            rows = _influx_query(flux)
+            rows = await asyncio.to_thread(_influx_query, flux)
             if rows:
                 current_power = rows[-1]["value"]
         except Exception:
@@ -244,7 +251,7 @@ from(bucket: "{config.influxdb.bucket}")
   |> sort(columns: ["_time"])
 """
     try:
-        rows = _influx_query(flux)
+        rows = await asyncio.to_thread(_influx_query, flux)
     except Exception as exc:
         raise HTTPException(500, f"InfluxDB query failed: {exc}")
     return [{"time": r["time"], "power": r["value"]} for r in rows]
@@ -264,7 +271,7 @@ from(bucket: "{config.influxdb.bucket}")
   |> sort(columns: ["_time"])
 """
     try:
-        rows = _influx_query(flux)
+        rows = await asyncio.to_thread(_influx_query, flux)
     except Exception as exc:
         raise HTTPException(500, f"InfluxDB query failed: {exc}")
     return [{"time": r["time"], "accumulatedCost": r["value"]} for r in rows]
@@ -290,7 +297,7 @@ from(bucket: "{config.influxdb.bucket}")
   |> sort(columns: ["_time"])
 """
     try:
-        rows = _influx_query(flux)
+        rows = await asyncio.to_thread(_influx_query, flux)
     except Exception as exc:
         raise HTTPException(500, f"InfluxDB query failed: {exc}")
     by_time: dict[str, dict[str, Any]] = {}

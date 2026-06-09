@@ -68,6 +68,8 @@ class TibberPulseManager:
         self._connected: bool = False
         self._last_measurement: Optional[dict[str, Any]] = None
         self._last_ts: Optional[str] = None
+        self._token: Optional[str] = None
+        self._home_id: Optional[str] = None
 
     @property
     def connected(self) -> bool:
@@ -82,6 +84,8 @@ class TibberPulseManager:
         return self._last_ts
 
     async def start(self, token: str, home_id: str) -> None:
+        self._token = token
+        self._home_id = home_id
         self.stop()
         self._task = asyncio.create_task(self._run(token, home_id))
 
@@ -91,6 +95,12 @@ class TibberPulseManager:
             self._task = None
         self._connected = False
 
+    def ensure_running(self) -> None:
+        if self._token and self._home_id:
+            if self._task is None or self._task.done():
+                logger.warning("Pulse task was dead — restarting")
+                self._task = asyncio.create_task(self._run(self._token, self._home_id))
+
     async def _run(self, token: str, home_id: str) -> None:
         backoff = 2
         while True:
@@ -99,7 +109,7 @@ class TibberPulseManager:
                 backoff = 2
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except BaseException as exc:
                 self._connected = False
                 logger.warning("Pulse disconnected: %s — retry in %ds", exc, backoff)
                 await asyncio.sleep(backoff)
@@ -213,8 +223,12 @@ class TibberPoller:
 
     def __init__(self) -> None:
         self._task: Optional[asyncio.Task[None]] = None
+        self._token: Optional[str] = None
+        self._home_id: Optional[str] = None
 
     async def start(self, token: str, home_id: str) -> None:
+        self._token = token
+        self._home_id = home_id
         self.stop()
         self._task = asyncio.create_task(self._loop(token, home_id))
 
@@ -223,13 +237,19 @@ class TibberPoller:
             self._task.cancel()
             self._task = None
 
+    def ensure_running(self) -> None:
+        if self._token and self._home_id:
+            if self._task is None or self._task.done():
+                logger.warning("REST poller task was dead — restarting")
+                self._task = asyncio.create_task(self._loop(self._token, self._home_id))
+
     async def _loop(self, token: str, home_id: str) -> None:
         while True:
             try:
                 await self._poll(token, home_id)
             except asyncio.CancelledError:
                 raise
-            except Exception as exc:
+            except BaseException as exc:
                 logger.warning("Tibber REST poll failed: %s", exc)
             await asyncio.sleep(3600)
 

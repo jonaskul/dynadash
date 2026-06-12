@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import websockets
@@ -53,6 +53,7 @@ def _influx_client():
         url=config.influxdb.url,
         token=config.influxdb.token,
         org=config.influxdb.org,
+        timeout=10_000,
     )
 
 
@@ -96,10 +97,22 @@ class TibberPulseManager:
         self._connected = False
 
     def ensure_running(self) -> None:
-        if self._token and self._home_id:
-            if self._task is None or self._task.done():
+        if not (self._token and self._home_id):
+            return
+        stale = False
+        if self._connected and self._last_ts:
+            try:
+                last = datetime.fromisoformat(self._last_ts.replace("Z", "+00:00"))
+                stale = (datetime.now(timezone.utc) - last).total_seconds() > 90
+            except Exception:
+                pass
+        if self._task is None or self._task.done() or stale:
+            if stale:
+                logger.warning("Pulse stale (no data for >90s) — reconnecting")
+            else:
                 logger.warning("Pulse task was dead — restarting")
-                self._task = asyncio.create_task(self._run(self._token, self._home_id))
+            self.stop()
+            self._task = asyncio.create_task(self._run(self._token, self._home_id))
 
     async def _run(self, token: str, home_id: str) -> None:
         backoff = 2

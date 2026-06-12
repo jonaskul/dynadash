@@ -1,0 +1,21 @@
+# Backend
+backend/.venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/data/gateway.json
+backend/data/areas.json
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Config (user-generated, not source)
+config.yaml
+
+# OS / editor
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/

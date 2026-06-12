@@ -1,0 +1,21 @@
+# DynaDash configuration file
+# Copy this file to config.yaml and fill in your values.
+# install.sh will create config.yaml automatically during setup.
+
+influxdb:
+  # URL of your InfluxDB v2 instance (typically localhost in an LXC setup)
+  url: "http://localhost:8086"
+
+  # InfluxDB API token with read/write access to the bucket below.
+  # Created by install.sh; you can also generate one in the InfluxDB UI.
+  token: "your-influxdb-token-here"
+
+  # InfluxDB organisation name (set during influx setup)
+  org: "home"
+
+  # InfluxDB bucket where DynaDash writes all time-series data
+  bucket: "dynadash"
+
+# How often (in seconds) the backend polls the Dynalite gateway for live state.
+# Lower values give more responsive UI but increase load on the gateway.
+polling_interval_seconds: 10

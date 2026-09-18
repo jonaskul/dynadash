@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Any, Optional
+import time
+from typing import Any, Callable, Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+import influx_store
 from config import config
 from tibber_db import delete_setting, get_setting, set_setting
 from tibber_pulse import pulse_manager, rest_poller
@@ -18,8 +19,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/energy", tags=["energy"])
 
 _GQL_URL = "https://api.tibber.com/v1-beta/gql"
+_USER_AGENT = "DynaDash/1.0"
 _VALID_RANGES = {"1h", "6h", "24h", "7d"}
 _VALID_RESOLUTIONS = {"HOURLY", "DAILY", "MONTHLY"}
+
+# Pulse writes a measurement every ~2s, so an un-aggregated 7d query returns
+# roughly 300k points per field — enough to exhaust memory on the box and hang
+# the browser. Every range is downsampled to a few hundred points instead.
+_WINDOW = {"1h": "10s", "6h": "1m", "24h": "5m", "7d": "30m"}
+
+# The dashboard polls /status every two seconds. Serving it straight from
+# InfluxDB kept the worker-thread pool busy around the clock, and once that pool
+# had nothing free the Pulse read loop stalled with it.
+_PRICE_TTL = 60.0
+_POWER_TTL = 10.0
+# Beyond this, the in-memory measurement is too old to report as live power.
+_LIVE_MAX_AGE = 300.0
 
 
 # ---------------------------------------------------------------------------
@@ -35,7 +50,10 @@ async def _gql(token: str, query: str) -> dict[str, Any]:
         r = await client.post(
             _GQL_URL,
             json={"query": query},
-            headers={"Authorization": f"Bearer {token}"},
+            headers={
+                "Authorization": f"Bearer {token}",
+                "User-Agent": _USER_AGENT,
+            },
         )
         r.raise_for_status()
     body = r.json()
@@ -55,13 +73,7 @@ def _require_token() -> str:
 
 
 def _influx_query(flux: str) -> list[dict[str, Any]]:
-    from influxdb_client import InfluxDBClient
-    with InfluxDBClient(
-        url=config.influxdb.url,
-        token=config.influxdb.token,
-        org=config.influxdb.org,
-    ) as client:
-        tables = client.query_api().query(flux)
+    tables = influx_store.query(flux)
     results = []
     for table in tables:
         for record in table.records:
@@ -71,6 +83,54 @@ def _influx_query(flux: str) -> list[dict[str, Any]]:
                 "field": record.get_field(),
             })
     return results
+
+
+def _last_price() -> Optional[dict[str, Any]]:
+    """Most recent stored price. Blocking — call via a worker thread."""
+    flux = f"""
+from(bucket: "{config.influxdb.bucket}")
+  |> range(start: -2h)
+  |> filter(fn: (r) => r._measurement == "tibber_price")
+  |> filter(fn: (r) => r._field == "total")
+  |> last()
+"""
+    rows = [
+        {
+            "total": record.get_value(),
+            "level": record.values.get("level"),
+            "currency": record.values.get("currency"),
+        }
+        for table in influx_store.query(flux)
+        for record in table.records
+    ]
+    return rows[-1] if rows else None
+
+
+def _last_stored_power() -> Optional[float]:
+    """Most recent stored power reading. Blocking — call via a worker thread."""
+    flux = f"""
+from(bucket: "{config.influxdb.bucket}")
+  |> range(start: -5m)
+  |> filter(fn: (r) => r._measurement == "tibber_pulse")
+  |> filter(fn: (r) => r._field == "power")
+  |> last()
+"""
+    rows = _influx_query(flux)
+    return rows[-1]["value"] if rows else None
+
+
+_cache: dict[str, tuple[float, Any]] = {}
+
+
+async def _cached(key: str, ttl: float, fn: Callable[..., Any], *args: Any) -> Any:
+    """Run *fn* in a worker thread, reusing its result for *ttl* seconds."""
+    now = time.monotonic()
+    hit = _cache.get(key)
+    if hit is not None and now - hit[0] < ttl:
+        return hit[1]
+    value = await asyncio.to_thread(fn, *args)
+    _cache[key] = (time.monotonic(), value)
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -126,61 +186,32 @@ async def energy_status() -> dict[str, Any]:
     current_price: Optional[dict[str, Any]] = None
     if configured and home_id:
         try:
-            flux = f"""
-from(bucket: "{config.influxdb.bucket}")
-  |> range(start: -2h)
-  |> filter(fn: (r) => r._measurement == "tibber_price")
-  |> filter(fn: (r) => r._field == "total")
-  |> last()
-"""
-            def _query_price() -> list[dict[str, Any]]:
-                from influxdb_client import InfluxDBClient
-                with InfluxDBClient(
-                    url=config.influxdb.url,
-                    token=config.influxdb.token,
-                    org=config.influxdb.org,
-                ) as client:
-                    tables = client.query_api().query(flux)
-                rows = []
-                for table in tables:
-                    for record in table.records:
-                        rows.append({
-                            "total": record.get_value(),
-                            "level": record.values.get("level"),
-                            "currency": record.values.get("currency"),
-                        })
-                return rows
-            price_rows = await asyncio.to_thread(_query_price)
-            if price_rows:
-                current_price = price_rows[-1]
+            current_price = await _cached("price", _PRICE_TTL, _last_price)
         except Exception:
             pass
 
+    # The live reading is already in memory from the WebSocket — querying
+    # InfluxDB for it on every poll was pure waste.
     current_power: Optional[float] = None
-    if configured:
+    age = pulse_manager.data_age
+    measurement = pulse_manager.last_measurement
+    if measurement is not None and age is not None and age < _LIVE_MAX_AGE:
+        raw = measurement.get("power")
+        if raw is not None:
+            try:
+                current_power = float(raw)
+            except (TypeError, ValueError):
+                current_power = None
+    elif configured:
+        # No live feed right now: fall back to the last stored value, cached so
+        # a two-second poll cannot turn into two queries a second.
         try:
-            flux = f"""
-from(bucket: "{config.influxdb.bucket}")
-  |> range(start: -5m)
-  |> filter(fn: (r) => r._measurement == "tibber_pulse")
-  |> filter(fn: (r) => r._field == "power")
-  |> last()
-"""
-            rows = await asyncio.to_thread(_influx_query, flux)
-            if rows:
-                current_power = rows[-1]["value"]
+            current_power = await _cached("power", _POWER_TTL, _last_stored_power)
         except Exception:
             pass
 
-    # Consider Pulse "connected" only if we got a measurement in the last 60s
-    pulse_live = False
-    if pulse_manager.connected and pulse_manager.last_ts:
-        try:
-            last = datetime.fromisoformat(pulse_manager.last_ts.replace("Z", "+00:00"))
-            age = (datetime.now(timezone.utc) - last).total_seconds()
-            pulse_live = age < 60
-        except Exception:
-            pulse_live = pulse_manager.connected
+    # Report Pulse as live only while measurements are actually arriving.
+    pulse_live = pulse_manager.connected and age is not None and age < 60
 
     return {
         "configured": configured,
@@ -248,6 +279,7 @@ from(bucket: "{config.influxdb.bucket}")
   |> range(start: -{range})
   |> filter(fn: (r) => r._measurement == "tibber_pulse")
   |> filter(fn: (r) => r._field == "power")
+  |> aggregateWindow(every: {_WINDOW[range]}, fn: mean, createEmpty: false)
   |> sort(columns: ["_time"])
 """
     try:
@@ -268,6 +300,7 @@ from(bucket: "{config.influxdb.bucket}")
   |> range(start: -{range})
   |> filter(fn: (r) => r._measurement == "tibber_pulse")
   |> filter(fn: (r) => r._field == "accumulatedCost")
+  |> aggregateWindow(every: {_WINDOW[range]}, fn: max, createEmpty: false)
   |> sort(columns: ["_time"])
 """
     try:
@@ -294,6 +327,7 @@ from(bucket: "{config.influxdb.bucket}")
   |> range(start: -{range})
   |> filter(fn: (r) => r._measurement == "tibber_pulse")
   |> filter(fn: (r) => {fields_filter})
+  |> aggregateWindow(every: {_WINDOW[range]}, fn: mean, createEmpty: false)
   |> sort(columns: ["_time"])
 """
     try:

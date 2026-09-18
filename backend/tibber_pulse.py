@@ -3,16 +3,35 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+import time
+from datetime import datetime
 from typing import Any, Optional
 
+import httpx
 import websockets
 from influxdb_client import Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
 
-from config import config
+import influx_store
 
 logger = logging.getLogger(__name__)
+
+_REST_URL = "https://api.tibber.com/v1-beta/gql"
+
+# Tibber asks API clients to identify themselves, and documents the real-time
+# endpoint as discoverable rather than fixed — so we ask for it instead of
+# hardcoding a host that can be retired without notice.
+_USER_AGENT = "DynaDash/1.0"
+_WS_URL_QUERY = "{ viewer { websocketSubscriptionUrl } }"
+_WS_URL_FALLBACK = "wss://websocket-api.tibber.com/v1-beta/gql/subscriptions"
+
+# Tibber pushes a liveMeasurement every ~2s. A minute and a half of silence
+# means the socket is dead even when it never raised an exception.
+_STALE_AFTER = 90.0
+_BACKOFF_MIN = 5
+_BACKOFF_MAX = 60
+# A connection that lasted this long counts as healthy, so the next failure
+# starts backing off from scratch again.
+_BACKOFF_RESET = 120.0
 
 _PULSE_FIELDS = [
     "power", "lastMeterConsumption", "accumulatedConsumption",
@@ -47,14 +66,27 @@ _CONSUMPTION_QUERY = """{{ viewer {{ home(id: "{home_id}") {{
 }} }} }}"""
 
 
-def _influx_client():
-    from influxdb_client import InfluxDBClient
-    return InfluxDBClient(
-        url=config.influxdb.url,
-        token=config.influxdb.token,
-        org=config.influxdb.org,
-        timeout=10_000,
-    )
+async def _subscription_url(token: str) -> str:
+    """Ask Tibber which WebSocket host to use, falling back to the known one."""
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as http:
+            r = await http.post(
+                _REST_URL,
+                json={"query": _WS_URL_QUERY},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "User-Agent": _USER_AGENT,
+                },
+            )
+            r.raise_for_status()
+            url = (r.json().get("data") or {}).get("viewer", {}).get(
+                "websocketSubscriptionUrl"
+            )
+            if url:
+                return url
+    except Exception as exc:
+        logger.warning("Could not look up Pulse WebSocket URL (%s) — using default", exc)
+    return _WS_URL_FALLBACK
 
 
 # ---------------------------------------------------------------------------
@@ -71,6 +103,11 @@ class TibberPulseManager:
         self._last_ts: Optional[str] = None
         self._token: Optional[str] = None
         self._home_id: Optional[str] = None
+        # Liveness is tracked against our own monotonic clock rather than the
+        # meter's timestamp, so neither a drifting meter clock nor a socket that
+        # connects and then never delivers anything can hide a stalled feed.
+        self._last_activity: Optional[float] = None
+        self._last_data: Optional[float] = None
 
     @property
     def connected(self) -> bool:
@@ -84,62 +121,87 @@ class TibberPulseManager:
     def last_ts(self) -> Optional[str]:
         return self._last_ts
 
+    @property
+    def data_age(self) -> Optional[float]:
+        """Seconds since the last measurement arrived, or None if none has."""
+        if self._last_data is None:
+            return None
+        return time.monotonic() - self._last_data
+
     async def start(self, token: str, home_id: str) -> None:
         self._token = token
         self._home_id = home_id
-        self.stop()
-        self._task = asyncio.create_task(self._run(token, home_id))
+        self._restart()
 
     def stop(self) -> None:
         if self._task:
             self._task.cancel()
             self._task = None
         self._connected = False
+        self._last_activity = None
+
+    def _restart(self) -> None:
+        self.stop()
+        self._task = asyncio.create_task(
+            self._run(self._token, self._home_id), name="tibber-pulse"
+        )
 
     def ensure_running(self) -> None:
         if not (self._token and self._home_id):
             return
-        stale = False
-        if self._connected and self._last_ts:
-            try:
-                last = datetime.fromisoformat(self._last_ts.replace("Z", "+00:00"))
-                stale = (datetime.now(timezone.utc) - last).total_seconds() > 90
-            except Exception:
-                pass
-        if self._task is None or self._task.done() or stale:
-            if stale:
-                logger.warning("Pulse stale (no data for >90s) — reconnecting")
-            else:
-                logger.warning("Pulse task was dead — restarting")
-            self.stop()
-            self._task = asyncio.create_task(self._run(self._token, self._home_id))
+        task = self._task
+        if task is None or task.done():
+            logger.warning("Pulse task was dead — restarting")
+            self._restart()
+            return
+        # The task can be alive and still be going nowhere: a half-open TCP
+        # connection leaves the read loop waiting on a socket that will never
+        # produce another frame, and nothing raises. Only silence reveals it.
+        if self._last_activity is None:
+            return
+        idle = time.monotonic() - self._last_activity
+        if idle > _STALE_AFTER:
+            logger.warning("Pulse silent for %.0fs — forcing reconnect", idle)
+            self._restart()
 
     async def _run(self, token: str, home_id: str) -> None:
-        backoff = 2
+        backoff = _BACKOFF_MIN
         while True:
+            started = time.monotonic()
             try:
                 await self._connect(token, home_id)
-                backoff = 2
+                logger.info("Pulse: stream closed by Tibber")
             except asyncio.CancelledError:
+                self._connected = False
                 raise
             except BaseException as exc:
-                self._connected = False
-                logger.warning("Pulse disconnected: %s — retry in %ds", exc, backoff)
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 60)
+                logger.warning("Pulse disconnected: %s", exc)
+            self._connected = False
+            # A connection that survived a while earns a short backoff again.
+            # One that died immediately must not be retried immediately, or a
+            # server closing on us turns this loop into a reconnect storm.
+            if time.monotonic() - started >= _BACKOFF_RESET:
+                backoff = _BACKOFF_MIN
+            logger.info("Pulse: reconnecting in %ds", backoff)
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, _BACKOFF_MAX)
 
     async def _connect(self, token: str, home_id: str) -> None:
-        url = "wss://websocket-api.tibber.com/v1-beta/gql/subscriptions"
-        logger.info("Pulse: connecting to Tibber WebSocket (home %s)", home_id)
+        url = await _subscription_url(token)
+        logger.info("Pulse: connecting to %s (home %s)", url, home_id)
 
         async with websockets.connect(
             url,
             subprotocols=["graphql-transport-ws"],
-            additional_headers={"Authorization": f"Bearer {token}"},
+            additional_headers={
+                "Authorization": f"Bearer {token}",
+                "User-Agent": _USER_AGENT,
+            },
             open_timeout=30,
             ping_interval=20,
             ping_timeout=20,
         ) as ws:
+            self._last_activity = time.monotonic()
             logger.info("Pulse: WebSocket opened, sending connection_init")
             await ws.send(json.dumps({
                 "type": "connection_init",
@@ -181,7 +243,12 @@ class TibberPulseManager:
             self._connected = True
             logger.info("Tibber Pulse subscribed for home %s", home_id)
 
+            # Everything in this loop is CPU-only — the InfluxDB write is handed
+            # to a queue rather than awaited. If it ever waited on the database
+            # again, unread frames would pile up behind it, pongs among them,
+            # and Tibber would drop us on a keepalive timeout.
             async for raw in ws:
+                self._last_activity = time.monotonic()
                 msg = json.loads(raw)
                 mtype = msg.get("type")
                 if mtype == "next":  # graphql-transport-ws data message
@@ -189,7 +256,8 @@ class TibberPulseManager:
                     if lm:
                         self._last_measurement = lm
                         self._last_ts = lm.get("timestamp")
-                        await asyncio.to_thread(self._write_pulse, home_id, lm)
+                        self._last_data = time.monotonic()
+                        self._queue_pulse(home_id, lm)
                 elif mtype == "ka":
                     pass
                 elif mtype == "ping":
@@ -202,29 +270,28 @@ class TibberPulseManager:
                     logger.info("Pulse subscription completed")
                     break
 
-    def _write_pulse(self, home_id: str, data: dict[str, Any]) -> None:
+    def _queue_pulse(self, home_id: str, data: dict[str, Any]) -> None:
+        """Hand one measurement to the background writer. Must not block."""
         ts_str = data.get("timestamp", "")
         if not ts_str:
             return
-        point = (
-            Point("tibber_pulse")
-            .tag("home_id", home_id)
-            .time(
-                datetime.fromisoformat(ts_str.replace("Z", "+00:00")),
-                WritePrecision.S,
-            )
-        )
-        for field in _PULSE_FIELDS:
-            v = data.get(field)
-            if v is not None:
-                point = point.field(field, float(v))
         try:
-            with _influx_client() as client:
-                client.write_api(write_options=SYNCHRONOUS).write(
-                    bucket=config.influxdb.bucket, record=point
+            point = (
+                Point("tibber_pulse")
+                .tag("home_id", home_id)
+                .time(
+                    datetime.fromisoformat(ts_str.replace("Z", "+00:00")),
+                    WritePrecision.S,
                 )
+            )
+            for field in _PULSE_FIELDS:
+                v = data.get(field)
+                if v is not None:
+                    point = point.field(field, float(v))
         except Exception as exc:
-            logger.warning("InfluxDB pulse write failed: %s", exc)
+            logger.warning("Skipping malformed Pulse measurement: %s", exc)
+            return
+        influx_store.enqueue(point)
 
 
 # ---------------------------------------------------------------------------
@@ -267,9 +334,11 @@ class TibberPoller:
             await asyncio.sleep(3600)
 
     async def _poll(self, token: str, home_id: str) -> None:
-        import httpx
-        headers = {"Authorization": f"Bearer {token}"}
-        gql_url = "https://api.tibber.com/v1-beta/gql"
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "User-Agent": _USER_AGENT,
+        }
+        gql_url = _REST_URL
 
         async with httpx.AsyncClient(timeout=15.0) as http:
             # Prices
@@ -325,10 +394,7 @@ class TibberPoller:
         if not points:
             return
         try:
-            with _influx_client() as client:
-                client.write_api(write_options=SYNCHRONOUS).write(
-                    bucket=config.influxdb.bucket, record=points
-                )
+            influx_store.write_points(points)
         except Exception as exc:
             logger.warning("InfluxDB price write failed: %s", exc)
 
@@ -354,10 +420,7 @@ class TibberPoller:
         if not points:
             return
         try:
-            with _influx_client() as client:
-                client.write_api(write_options=SYNCHRONOUS).write(
-                    bucket=config.influxdb.bucket, record=points
-                )
+            influx_store.write_points(points)
         except Exception as exc:
             logger.warning("InfluxDB consumption write failed: %s", exc)
 

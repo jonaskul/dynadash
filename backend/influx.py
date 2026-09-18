@@ -3,22 +3,19 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from influxdb_client import InfluxDBClient, Point, WritePrecision
-from influxdb_client.client.write_api import SYNCHRONOUS
+from influxdb_client import Point, WritePrecision
 
+import influx_store
 from config import config
 
 
-def _client() -> InfluxDBClient:
-    return InfluxDBClient(
-        url=config.influxdb.url,
-        token=config.influxdb.token,
-        org=config.influxdb.org,
-    )
-
-
 class InfluxWriter:
-    """Write time-series measurements to InfluxDB."""
+    """Queue time-series measurements for background writing.
+
+    The poller calls these from the event loop, so they must not do I/O: a
+    blocking write here stops every other coroutine, the Pulse WebSocket
+    included, for as long as InfluxDB takes to answer.
+    """
 
     def write_temperature(
         self,
@@ -35,9 +32,7 @@ class InfluxWriter:
             .field("setpoint", setpoint)
             .time(datetime.now(timezone.utc), WritePrecision.S)
         )
-        with _client() as client:
-            write_api = client.write_api(write_options=SYNCHRONOUS)
-            write_api.write(bucket=config.influxdb.bucket, record=point)
+        influx_store.enqueue(point)
 
     def write_level(
         self,
@@ -54,9 +49,7 @@ class InfluxWriter:
             .field("level", float(level))
             .time(datetime.now(timezone.utc), WritePrecision.S)
         )
-        with _client() as client:
-            write_api = client.write_api(write_options=SYNCHRONOUS)
-            write_api.write(bucket=config.influxdb.bucket, record=point)
+        influx_store.enqueue(point)
 
     def write_preset(
         self,
@@ -71,18 +64,14 @@ class InfluxWriter:
             .field("preset", preset)
             .time(datetime.now(timezone.utc), WritePrecision.S)
         )
-        with _client() as client:
-            write_api = client.write_api(write_options=SYNCHRONOUS)
-            write_api.write(bucket=config.influxdb.bucket, record=point)
+        influx_store.enqueue(point)
 
 
 class InfluxReader:
     """Query historical measurements from InfluxDB."""
 
     def _query(self, flux: str) -> list[dict[str, Any]]:
-        with _client() as client:
-            query_api = client.query_api()
-            tables = query_api.query(flux)
+        tables = influx_store.query(flux)
         records: list[dict[str, Any]] = []
         for table in tables:
             for record in table.records:
@@ -108,9 +97,7 @@ from(bucket: "{config.influxdb.bucket}")
   |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
   |> sort(columns: ["_time"])
 """
-        with _client() as client:
-            query_api = client.query_api()
-            tables = query_api.query(flux)
+        tables = influx_store.query(flux)
 
         results: list[dict[str, Any]] = []
         for table in tables:
@@ -137,9 +124,7 @@ from(bucket: "{config.influxdb.bucket}")
   |> filter(fn: (r) => r._field == "level")
   |> sort(columns: ["_time"])
 """
-        with _client() as client:
-            query_api = client.query_api()
-            tables = query_api.query(flux)
+        tables = influx_store.query(flux)
 
         results: list[dict[str, Any]] = []
         for table in tables:
@@ -163,8 +148,7 @@ from(bucket: "{config.influxdb.bucket}")
   |> pivot(rowKey: ["_time", "area_id", "area_name"], columnKey: ["_field"], valueColumn: "_value")
   |> sort(columns: ["_time"])
 """
-        with _client() as client:
-            tables = client.query_api().query(flux)
+        tables = influx_store.query(flux)
         return [
             {
                 "time": r.get_time().isoformat() if r.get_time() else None,
@@ -187,8 +171,7 @@ from(bucket: "{config.influxdb.bucket}")
   |> filter(fn: (r) => r._field == "level")
   |> sort(columns: ["_time"])
 """
-        with _client() as client:
-            tables = client.query_api().query(flux)
+        tables = influx_store.query(flux)
         return [
             {
                 "time": r.get_time().isoformat() if r.get_time() else None,
@@ -227,10 +210,7 @@ class InfluxImporter:
                 p = p.field("setpoint", float(sp))
             points.append(p)
         if points:
-            with _client() as client:
-                client.write_api(write_options=SYNCHRONOUS).write(
-                    bucket=config.influxdb.bucket, record=points
-                )
+            influx_store.write_points(points)
         return len(points)
 
     def import_channel_level(self, records: list[dict[str, Any]]) -> int:
@@ -248,8 +228,5 @@ class InfluxImporter:
             if r.get("level") is not None
         ]
         if points:
-            with _client() as client:
-                client.write_api(write_options=SYNCHRONOUS).write(
-                    bucket=config.influxdb.bucket, record=points
-                )
+            influx_store.write_points(points)
         return len(points)

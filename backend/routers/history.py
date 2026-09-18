@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+import asyncio
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -29,7 +30,11 @@ async def temperature_history(
     """Return temperature and setpoint history for a thermostat area."""
     _validate_range(range)
     try:
-        return _reader.query_temperature_history(area_id, range)
+        # Off the event loop: the InfluxDB client is synchronous, and a query
+        # awaited here would otherwise freeze every other coroutine.
+        return await asyncio.to_thread(
+            _reader.query_temperature_history, area_id, range
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"InfluxDB query failed: {exc}")
 
@@ -43,6 +48,8 @@ async def level_history(
     """Return channel level history for a lighting area."""
     _validate_range(range)
     try:
-        return _reader.query_level_history(area_id, channel, range)
+        return await asyncio.to_thread(
+            _reader.query_level_history, area_id, channel, range
+        )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"InfluxDB query failed: {exc}")

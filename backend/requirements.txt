@@ -6,4 +6,5 @@ pydantic-settings>=2.2.0
 pyyaml>=6.0.1
 influxdb-client>=1.43.0
 python-multipart>=0.0.9
-websockets>=12.0
+# 14.0 renamed extra_headers to additional_headers, which tibber_pulse uses.
+websockets>=14.0

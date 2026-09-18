@@ -5,6 +5,9 @@ backend/**/__pycache__/
 backend/*.pyc
 backend/data/gateway.json
 backend/data/areas.json
+backend/data/settings.json
+# Holds the Tibber API token — must never be committed.
+backend/data/tibber.db
 
 # Frontend
 frontend/node_modules/

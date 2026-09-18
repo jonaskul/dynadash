@@ -37,6 +37,7 @@ async def _watchdog() -> None:
                 influx_store.pending(),
             )
             influx_store.ensure_running()
+            poller.ensure_running()
             pulse_manager.ensure_running()
             rest_poller.ensure_running()
         except asyncio.CancelledError:

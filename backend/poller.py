@@ -59,6 +59,13 @@ class Poller:
     def stop(self) -> None:
         if self._task:
             self._task.cancel()
+            self._task = None
+
+    def ensure_running(self) -> None:
+        """Restart the poll loop if it died. Called by the watchdog."""
+        if self._task is None or self._task.done():
+            logger.warning("Dynalite poller task was dead — restarting")
+            self._task = asyncio.create_task(self._loop(), name="dynalite-poller")
 
     async def _loop(self) -> None:
         while True:
@@ -70,8 +77,8 @@ class Poller:
             try:
                 await self._poll_once()
             except asyncio.CancelledError:
-                break
-            except Exception as exc:
+                raise
+            except BaseException as exc:
                 logger.warning("Poller unexpected error: %s", exc)
 
     async def _poll_once(self) -> None:

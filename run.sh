@@ -135,17 +135,17 @@ ensure_template() {
       avail=$(pveam available --section system 2>/dev/null \
         | awk '/debian-12-standard/{print $2; exit}')
     fi
-    [[ -z "$avail" ]] && { msg_error "No debian-13 or debian-12 template found in pveam." >&2; exit 1; }
+    [[ -z "$avail" ]] && { msg_error "No debian-13 or debian-12 template found in pveam." >&2; }
 
     msg_info "Downloading template: ${avail} (this may take a moment)…" >&2
     pveam download "$tmpl_storage" "$avail" >&2 \
-      || { msg_error "pveam download failed. Check internet connectivity." >&2; exit 1; }
+      || { msg_error "pveam download failed. Check internet connectivity." >&2; }
 
     tmpl=$(pveam list "$tmpl_storage" 2>/dev/null \
       | awk '/debian-1[23]-standard/{print $1; exit}')
   fi
 
-  [[ -z "$tmpl" ]] && { msg_error "Template not found after download attempt." >&2; exit 1; }
+  [[ -z "$tmpl" ]] && { msg_error "Template not found after download attempt." >&2; }
   msg_ok "Template: $tmpl" >&2
   echo "$tmpl"   # ← only this line goes to stdout / gets captured
 }
@@ -238,7 +238,7 @@ msg_info "Starting container…"
 pct start "$CTID" || msg_error "pct start ${CTID} failed."
 
 # Wait for pct exec to work (container init)
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   pct exec "$CTID" -- true &>/dev/null 2>&1 && break
   sleep 1
 done
@@ -246,14 +246,14 @@ pct exec "$CTID" -- true &>/dev/null 2>&1 \
   || msg_error "Container ${CTID} did not become ready after 30 s."
 
 # Wait for a default route (IP connectivity, up to 30 s)
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
   pct exec "$CTID" -- ip route show default 2>/dev/null | grep -q default && break
   sleep 1
 done
 
 # Wait for DNS to resolve (up to 60 s — gives DHCP time to set resolver)
 msg_info "Waiting for network inside container…"
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
   pct exec "$CTID" -- getent hosts deb.debian.org &>/dev/null 2>&1 && break
   sleep 1
 done

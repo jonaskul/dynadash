@@ -9,6 +9,7 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+import influx_maintenance
 import influx_store
 from config import config
 from tibber_db import delete_setting, get_setting, set_setting
@@ -27,6 +28,21 @@ _VALID_RESOLUTIONS = {"HOURLY", "DAILY", "MONTHLY"}
 # roughly 300k points per field — enough to exhaust memory on the box and hang
 # the browser. Every range is downsampled to a few hundred points instead.
 _WINDOW = {"1h": "10s", "6h": "1m", "24h": "5m", "7d": "30m"}
+
+# Long ranges read the one-minute rollup rather than the raw measurement. The
+# aggregation result is the same at these window sizes, but InfluxDB scans about
+# thirty times less to produce it — and raw points are pruned after a few weeks,
+# while the rollup is kept.
+_ROLLUP_RANGES = frozenset({"24h", "7d"})
+
+
+def _pulse_measurement(range_: str) -> str:
+    return (
+        influx_maintenance.ROLLUP_MEASUREMENT
+        if range_ in _ROLLUP_RANGES
+        else influx_maintenance.RAW_MEASUREMENT
+    )
+
 
 # The dashboard polls /status every two seconds. Serving it straight from
 # InfluxDB kept the worker-thread pool busy around the clock, and once that pool
@@ -277,7 +293,7 @@ async def history_power(
     flux = f"""
 from(bucket: "{config.influxdb.bucket}")
   |> range(start: -{range})
-  |> filter(fn: (r) => r._measurement == "tibber_pulse")
+  |> filter(fn: (r) => r._measurement == "{_pulse_measurement(range)}")
   |> filter(fn: (r) => r._field == "power")
   |> aggregateWindow(every: {_WINDOW[range]}, fn: mean, createEmpty: false)
   |> sort(columns: ["_time"])
@@ -298,7 +314,7 @@ async def history_cost(
     flux = f"""
 from(bucket: "{config.influxdb.bucket}")
   |> range(start: -{range})
-  |> filter(fn: (r) => r._measurement == "tibber_pulse")
+  |> filter(fn: (r) => r._measurement == "{_pulse_measurement(range)}")
   |> filter(fn: (r) => r._field == "accumulatedCost")
   |> aggregateWindow(every: {_WINDOW[range]}, fn: max, createEmpty: false)
   |> sort(columns: ["_time"])
@@ -325,7 +341,7 @@ async def history_phases(
     flux = f"""
 from(bucket: "{config.influxdb.bucket}")
   |> range(start: -{range})
-  |> filter(fn: (r) => r._measurement == "tibber_pulse")
+  |> filter(fn: (r) => r._measurement == "{_pulse_measurement(range)}")
   |> filter(fn: (r) => {fields_filter})
   |> aggregateWindow(every: {_WINDOW[range]}, fn: mean, createEmpty: false)
   |> sort(columns: ["_time"])

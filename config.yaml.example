@@ -19,3 +19,19 @@ influxdb:
 # How often (in seconds) the backend polls the Dynalite gateway for live state.
 # Lower values give more responsive UI but increase load on the gateway.
 polling_interval_seconds: 10
+
+# Tibber Pulse writes a measurement every ~2 seconds. An InfluxDB task rolls
+# those up into one-minute averages (measurement "tibber_pulse_1m", kept
+# indefinitely), and the raw points are deleted once the rollup covers them.
+retention:
+  # How long raw Pulse points are kept. The dashboard never charts raw Pulse
+  # data older than 7 days, so this is already a wide margin.
+  raw_pulse_days: 35
+
+  # How often the rollup task runs, in minutes.
+  rollup_every_minutes: 5
+
+  # Set to false to keep every raw point forever and only build the rollup.
+  # Raw points are never deleted beyond what the rollup has already recorded,
+  # so a stalled rollup task stops the pruning too.
+  prune_raw: true

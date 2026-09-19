@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 import auth
+import influx_maintenance
 import influx_store
 from poller import poller
 from routers import areas, backup, config_areas, gateway, history, settings, update
@@ -22,6 +23,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 WATCHDOG_INTERVAL = 60
+MAINTENANCE_INTERVAL = 6 * 3600
 
 # The only API paths reachable without a session. Everything else under /api/ is
 # guarded, so a router added later is protected by default rather than by
@@ -60,6 +62,26 @@ async def _watchdog() -> None:
             logger.exception("Watchdog iteration failed — continuing")
 
 
+async def _maintenance() -> None:
+    """Keep the rollup task installed and prune raw Pulse data it has covered.
+
+    Everything here talks to InfluxDB synchronously, so it runs in worker
+    threads; and like the watchdog it has to survive its own failures, since a
+    database that is briefly unreachable must not end the loop.
+    """
+    while True:
+        try:
+            await asyncio.to_thread(influx_maintenance.ensure_rollup_task)
+            cutoff = await asyncio.to_thread(influx_maintenance.prune_raw_pulse)
+            if cutoff is None:
+                logger.info("maintenance: rollup checked, nothing to prune")
+        except asyncio.CancelledError:
+            raise
+        except BaseException as exc:
+            logger.warning("InfluxDB maintenance failed: %s", exc)
+        await asyncio.sleep(MAINTENANCE_INTERVAL)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("DynaDash backend starting — launching poller")
@@ -74,9 +96,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await pulse_manager.start(token, home_id)
         await rest_poller.start(token, home_id)
     watchdog = asyncio.create_task(_watchdog(), name="tibber-watchdog")
+    maintenance = asyncio.create_task(_maintenance(), name="influx-maintenance")
     yield
     logger.info("DynaDash backend shutting down")
     watchdog.cancel()
+    maintenance.cancel()
     poller.stop()
     pulse_manager.stop()
     rest_poller.stop()

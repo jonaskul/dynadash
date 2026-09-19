@@ -15,9 +15,27 @@ class InfluxDBConfig(BaseModel):
     bucket: str = "dynadash"
 
 
+class RetentionConfig(BaseModel):
+    """How long raw Pulse measurements are kept before being rolled up.
+
+    Pulse writes a point every ~2s, which is roughly 43k points a day across 19
+    fields — left alone it fills the disk and slows every query. A one-minute
+    rollup keeps the information at about a thirtieth of the size, and the raw
+    points are pruned once the rollup has them.
+    """
+
+    # The dashboard never charts Pulse data older than 7 days, so this is a wide
+    # margin over anything that can actually be displayed.
+    raw_pulse_days: int = 35
+    rollup_every_minutes: int = 5
+    # Set false to keep every raw point forever and only build the rollup.
+    prune_raw: bool = True
+
+
 class AppConfig(BaseModel):
     influxdb: InfluxDBConfig = InfluxDBConfig()
     polling_interval_seconds: int = 10
+    retention: RetentionConfig = RetentionConfig()
 
 
 def load_config() -> AppConfig:
@@ -36,6 +54,7 @@ def load_config() -> AppConfig:
     return AppConfig(
         influxdb=InfluxDBConfig(**influx_raw),
         polling_interval_seconds=int(raw.get("polling_interval_seconds", 10)),
+        retention=RetentionConfig(**raw.get("retention", {})),
     )
 
 

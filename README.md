@@ -154,6 +154,47 @@ Data files in `backend/data/` (not in source control):
 
 ---
 
+## Data retention
+
+Tibber Pulse writes a measurement every couple of seconds — roughly 43,000
+points a day across 19 fields. Left alone that fills the disk and slowly makes
+every query worse, so an InfluxDB task (`dynadash-pulse-rollup`, created by the
+backend on startup) rolls the raw `tibber_pulse` measurement up into
+`tibber_pulse_1m`:
+
+- **Gauges** (power, voltage, current) are averaged per minute; **counters**
+  (`accumulated*`, `lastMeter*`) take the last value, since averaging a running
+  total means nothing.
+- The rollup is kept indefinitely; raw points are deleted after
+  `retention.raw_pulse_days` (35 by default).
+- Charts over 1h and 6h read the raw measurement, 24h and 7d read the rollup.
+
+Pruning never runs ahead of the rollup: the delete boundary is also held behind
+the newest rollup timestamp, so if the task stops running the pruning stops with
+it. Set `retention.prune_raw: false` in `config.yaml` to keep every raw point.
+
+If you had Pulse history before the rollup existed, build it retroactively once:
+
+```bash
+cd /opt/dynadash/backend
+sudo .venv/bin/python -m influx_maintenance backfill
+```
+
+## Development
+
+The backend test suite is hermetic — no InfluxDB, no Tibber, no network:
+
+```bash
+cd backend
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/pytest -q
+```
+
+The frontend build doubles as the type check (`npm run build` is `tsc && vite
+build`). GitHub Actions runs both on every push and pull request, along with
+`shellcheck` over the shell scripts and `systemd-analyze verify` over the unit
+template.
+
 ## Security
 
 DynaDash is designed for private LAN use. It is **not** hardened for exposure to

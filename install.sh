@@ -82,7 +82,7 @@ info "Enabling and starting InfluxDB…"
 systemctl enable influxdb --quiet
 systemctl start influxdb
 
-for i in $(seq 1 15); do
+for _ in $(seq 1 15); do
     if influx ping &>/dev/null 2>&1; then break; fi
     sleep 1
 done
@@ -128,6 +128,13 @@ influxdb:
   bucket: "${INFLUX_BUCKET}"
 
 polling_interval_seconds: 10
+
+# Raw Tibber Pulse points are rolled up into one-minute averages
+# (measurement "tibber_pulse_1m", kept indefinitely) and then pruned.
+retention:
+  raw_pulse_days: 35
+  rollup_every_minutes: 5
+  prune_raw: true
 EOF
     ok "config.yaml written"
 fi

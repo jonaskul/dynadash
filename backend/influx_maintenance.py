@@ -20,6 +20,9 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from influxdb_client.domain.task_create_request import TaskCreateRequest
+from influxdb_client.domain.task_status_type import TaskStatusType
+
 import influx_store
 from config import config
 
@@ -85,8 +88,13 @@ def ensure_rollup_task() -> None:
             break
 
     if existing is None:
-        org = _org_id(client)
-        tasks_api.create_task_with_script(name=TASK_NAME, flux=flux, org_id=org)
+        # Posting the flux directly, rather than via create_task_every, because
+        # the flux already carries its own `option task = {...}` header.
+        tasks_api.create_task(
+            task_create_request=TaskCreateRequest(
+                flux=flux, org_id=_org_id(client), status=TaskStatusType.ACTIVE
+            )
+        )
         logger.info("Created InfluxDB rollup task %r", TASK_NAME)
         return
 

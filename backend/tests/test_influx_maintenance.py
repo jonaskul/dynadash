@@ -169,3 +169,102 @@ def test_the_rollup_looks_further_back_than_its_interval() -> None:
 
 def test_the_task_is_named_so_it_can_be_found_and_updated() -> None:
     assert f'name: "{maint.TASK_NAME}"' in maint._rollup_flux(5)
+
+
+# ---------------------------------------------------------------------------
+# Installing the task
+#
+# These drive ensure_rollup_task against an autospecced TasksApi, so calling a
+# method the real client does not have fails here rather than in production —
+# which is exactly how an invented method name once got shipped.
+# ---------------------------------------------------------------------------
+
+def _fake_client(monkeypatch: pytest.MonkeyPatch, existing_tasks: list[object]):
+    from unittest.mock import MagicMock, create_autospec
+
+    from influxdb_client.client.organizations_api import OrganizationsApi
+    from influxdb_client.client.tasks_api import TasksApi
+
+    tasks_api = create_autospec(TasksApi, instance=True)
+    tasks_api.find_tasks.return_value = existing_tasks
+
+    org = MagicMock()
+    org.name = config.influxdb.org
+    org.id = "org-1"
+    orgs_api = create_autospec(OrganizationsApi, instance=True)
+    orgs_api.find_organizations.return_value = [org]
+
+    client = MagicMock()
+    client.tasks_api.return_value = tasks_api
+    client.organizations_api.return_value = orgs_api
+    monkeypatch.setattr(maint.influx_store, "get_client", lambda: client)
+    return tasks_api
+
+
+def test_the_task_is_created_when_it_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tasks_api = _fake_client(monkeypatch, [])
+
+    maint.ensure_rollup_task()
+
+    tasks_api.create_task.assert_called_once()
+    request = tasks_api.create_task.call_args.kwargs["task_create_request"]
+    assert request.flux == maint._rollup_flux(config.retention.rollup_every_minutes)
+    assert request.org_id == "org-1"
+    # An inactive task would be created and then never run.
+    from influxdb_client.domain.task_status_type import TaskStatusType
+
+    assert request.status == TaskStatusType.ACTIVE
+    tasks_api.update_task.assert_not_called()
+
+
+def test_an_out_of_date_task_is_updated(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import MagicMock
+
+    stale = MagicMock()
+    stale.name = maint.TASK_NAME
+    stale.flux = "option task = {name: \"dynadash-pulse-rollup\", every: 99m}\n"
+    tasks_api = _fake_client(monkeypatch, [stale])
+
+    maint.ensure_rollup_task()
+
+    tasks_api.update_task.assert_called_once_with(stale)
+    assert stale.flux == maint._rollup_flux(config.retention.rollup_every_minutes)
+    tasks_api.create_task.assert_not_called()
+
+
+def test_an_up_to_date_task_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import MagicMock
+
+    current = MagicMock()
+    current.name = maint.TASK_NAME
+    current.flux = maint._rollup_flux(config.retention.rollup_every_minutes)
+    tasks_api = _fake_client(monkeypatch, [current])
+
+    maint.ensure_rollup_task()
+
+    tasks_api.create_task.assert_not_called()
+    tasks_api.update_task.assert_not_called()
+
+
+def test_a_missing_organization_is_reported_clearly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import MagicMock, create_autospec
+
+    from influxdb_client.client.organizations_api import OrganizationsApi
+    from influxdb_client.client.tasks_api import TasksApi
+
+    tasks_api = create_autospec(TasksApi, instance=True)
+    tasks_api.find_tasks.return_value = []
+    orgs_api = create_autospec(OrganizationsApi, instance=True)
+    orgs_api.find_organizations.return_value = []
+
+    client = MagicMock()
+    client.tasks_api.return_value = tasks_api
+    client.organizations_api.return_value = orgs_api
+    monkeypatch.setattr(maint.influx_store, "get_client", lambda: client)
+
+    with pytest.raises(RuntimeError, match="organization"):
+        maint.ensure_rollup_task()

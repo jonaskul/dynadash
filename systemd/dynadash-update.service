@@ -1,0 +1,19 @@
+# Template rendered by install.sh and update.sh — @PLACEHOLDERS@ are substituted
+# there. Edit this file, not the generated unit in /etc/systemd/system.
+#
+# Started by dynadash-update.path when the backend asks for an update. Runs as
+# root, because it has to write the git checkout and restart services — but it
+# takes no arguments from the request beyond one of two fixed action words, which
+# dynadash-admin validates before acting.
+[Unit]
+Description=Apply a DynaDash update request
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=@APP_DIR@/scripts/dynadash-admin handle-request
+# A hung git fetch must not leave the unit running forever.
+TimeoutStartSec=600
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dynadash-update

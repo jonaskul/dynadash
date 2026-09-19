@@ -134,6 +134,12 @@ export interface PowerPoint {
   power: number | null;
 }
 
+export interface CostPoint {
+  time: string;
+  /** Cost accumulated since midnight, in the subscription's currency. */
+  accumulatedCost: number | null;
+}
+
 export interface PhasePoint {
   time: string;
   voltagePhase1?: number | null;

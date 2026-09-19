@@ -106,6 +106,15 @@ The script checks if the code has changed and exits immediately if already up to
 
 All output is appended to `/var/log/dynadash-update.log`.
 
+You can also update from **Settings → Software Update** in the dashboard. That
+route needs `dynadash-update.path` to be running — `install.sh` and `update.sh`
+both enable it, and the dashboard says so plainly if it is not:
+
+```bash
+systemctl status dynadash-update.path
+journalctl -u dynadash-update -n 30
+```
+
 ---
 
 ## Polling
@@ -210,12 +219,21 @@ What is in place:
   out for five minutes.
 - **The backend does not run as root.** It runs as the system user `dynadash`,
   under a systemd sandbox where the whole filesystem is read-only apart from
-  `backend/data`, and with no capabilities.
-- **Narrow privilege for the updater.** The GUI updater needs git and systemd, so
-  the backend may run `scripts/dynadash-admin` — root-owned, not writable by the
-  service user — through sudo, with its three actions (`fetch`, `revs`, `apply`)
-  listed verbatim in `/etc/sudoers.d/dynadash`. Nothing else is permitted.
+  `backend/data`, with no capabilities and `NoNewPrivileges=yes` — it cannot gain
+  privileges even if something in it is compromised.
+- **The updater never runs anything privileged from the backend.** The GUI
+  updater needs git and systemd, so the backend writes a request file into its
+  own data directory; `dynadash-update.path` notices it and runs
+  `scripts/dynadash-admin` as root. That script is root-owned, not writable by
+  the service user, and accepts exactly two action words (`check`, `apply`).
+  Nothing from the request reaches a shell — the only other field is a nonce used
+  to match the answer to the question, and it is passed as an argument, never
+  interpolated. This is what replaces sudo, and why `NoNewPrivileges` can stay
+  on: there is no setuid binary in the path any more.
 - **CORS** is restricted to localhost and private address ranges.
+- **The Tibber token is used by the backend only.** Prices and consumption are
+  served from InfluxDB rather than proxied per request, so the token is not spent
+  on every dashboard load.
 
 Worth knowing: the update flow deploys whatever `main` currently holds, so
 control of the GitHub repository means control of this machine. That is inherent

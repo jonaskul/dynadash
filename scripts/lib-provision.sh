@@ -5,8 +5,8 @@
 # Everything here is idempotent so it can run on every update.
 
 SERVICE_USER="dynadash"
+# Only referenced to remove it: an earlier version granted the backend sudo.
 SUDOERS_FILE="/etc/sudoers.d/dynadash"
-UNIT_FILE="/etc/systemd/system/dynadash-backend.service"
 
 # ---------------------------------------------------------------------------
 # The unprivileged account the backend runs as
@@ -53,49 +53,45 @@ provision_permissions() {
 }
 
 # ---------------------------------------------------------------------------
-# The narrow sudo grant that lets the unprivileged backend run the updater
+# Drop the sudo grant an earlier version installed
 # ---------------------------------------------------------------------------
-provision_sudoers() {
-    local helper="${APP_DIR}/scripts/dynadash-admin"
-    local tmp
-    tmp="$(mktemp)"
-    cat > "${tmp}" <<EOF
-# Managed by DynaDash install.sh — do not edit by hand.
-#
-# The backend runs as ${SERVICE_USER} and cannot use git or systemd directly.
-# These three actions are the whole of its privilege; each is spelled out in
-# full so no other command or argument can be substituted.
-${SERVICE_USER} ALL=(root) NOPASSWD: ${helper} fetch
-${SERVICE_USER} ALL=(root) NOPASSWD: ${helper} revs
-${SERVICE_USER} ALL=(root) NOPASSWD: ${helper} apply
-EOF
-    # A malformed drop-in breaks sudo for everyone, so never install one blind.
-    if ! visudo -c -q -f "${tmp}" &>/dev/null; then
-        rm -f "${tmp}"
-        echo "ERROR: generated sudoers file is invalid — not installing it." >&2
-        return 1
+# Privileged update steps now go through dynadash-update.path, so the backend
+# needs no sudo at all — and without a setuid path it can run under
+# NoNewPrivileges. Leaving a stale grant behind would only widen it again.
+provision_remove_sudoers() {
+    if [[ -f "${SUDOERS_FILE}" ]]; then
+        rm -f "${SUDOERS_FILE}"
+        echo "  removed the obsolete sudo grant at ${SUDOERS_FILE}"
     fi
-    install -o root -g root -m 440 "${tmp}" "${SUDOERS_FILE}"
-    rm -f "${tmp}"
 }
 
 # ---------------------------------------------------------------------------
-# The systemd unit, rendered from systemd/dynadash-backend.service.in
+# systemd units, rendered from the templates in systemd/
 # ---------------------------------------------------------------------------
-provision_service_unit() {
-    local template="${APP_DIR}/systemd/dynadash-backend.service.in"
+_render_unit() {
+    local template="${APP_DIR}/systemd/$1" target="/etc/systemd/system/$2"
     [[ -f "${template}" ]] || { echo "ERROR: missing ${template}" >&2; return 1; }
-    sed -e "s|@BACKEND_DIR@|${APP_DIR}/backend|g" \
+    sed -e "s|@APP_DIR@|${APP_DIR}|g" \
+        -e "s|@BACKEND_DIR@|${APP_DIR}/backend|g" \
         -e "s|@SERVICE_USER@|${SERVICE_USER}|g" \
-        "${template}" > "${UNIT_FILE}"
-    chmod 644 "${UNIT_FILE}"
+        "${template}" > "${target}"
+    chmod 644 "${target}"
+}
+
+provision_service_unit() {
+    _render_unit dynadash-backend.service.in dynadash-backend.service
+    _render_unit dynadash-update.service dynadash-update.service
+    _render_unit dynadash-update.path dynadash-update.path
     systemctl daemon-reload
+    # The path unit has to be running for the dashboard's update button to do
+    # anything at all.
+    systemctl enable --now dynadash-update.path --quiet
 }
 
 # Everything above, in the order they depend on each other.
 provision_all() {
     provision_user
     provision_permissions
-    provision_sudoers
+    provision_remove_sudoers
     provision_service_unit
 }

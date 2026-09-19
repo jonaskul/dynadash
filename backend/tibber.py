@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from datetime import datetime, timedelta
 from typing import Any, Callable, Optional
 
 import httpx
@@ -51,6 +52,12 @@ _PRICE_TTL = 60.0
 _POWER_TTL = 10.0
 # Beyond this, the in-memory measurement is too old to report as live power.
 _LIVE_MAX_AGE = 300.0
+
+# Prices and consumption only change once an hour, and the poller stores 720
+# hours of consumption, so nothing is gained by reading past that.
+_PRICES_TTL = 120.0
+_CONSUMPTION_TTL = 120.0
+_MAX_STORED_HOURS = 744
 
 
 # ---------------------------------------------------------------------------
@@ -133,6 +140,151 @@ from(bucket: "{config.influxdb.bucket}")
 """
     rows = _influx_query(flux)
     return rows[-1]["value"] if rows else None
+
+
+def _local_day_start() -> datetime:
+    """Midnight today in the machine's own timezone.
+
+    Prices are bucketed into today and tomorrow the same way Tibber does it, by
+    local calendar day rather than by a rolling 24 hours.
+    """
+    now = datetime.now().astimezone()
+    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _stored_prices() -> dict[str, Any]:
+    """Today's and tomorrow's stored prices. Blocking — use a worker thread."""
+    day_start = _local_day_start()
+    tomorrow = day_start + timedelta(days=1)
+    end = day_start + timedelta(days=2)
+
+    flux = f"""
+from(bucket: "{config.influxdb.bucket}")
+  |> range(start: {day_start.isoformat()}, stop: {end.isoformat()})
+  |> filter(fn: (r) => r._measurement == "tibber_price")
+  |> filter(fn: (r) => r._field == "total" or r._field == "energy" or r._field == "tax")
+  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> sort(columns: ["_time"])
+"""
+    today: list[dict[str, Any]] = []
+    later: list[dict[str, Any]] = []
+    current: Optional[dict[str, Any]] = None
+    hour_now = datetime.now().astimezone().replace(
+        minute=0, second=0, microsecond=0
+    )
+
+    for table in influx_store.query(flux):
+        for record in table.records:
+            ts = record.get_time()
+            if ts is None:
+                continue
+            values = record.values
+            entry = {
+                "startsAt": ts.isoformat(),
+                "total": values.get("total"),
+                "energy": values.get("energy"),
+                "tax": values.get("tax"),
+                "level": values.get("level"),
+                "currency": values.get("currency"),
+            }
+            local = ts.astimezone()
+            (later if local >= tomorrow else today).append(entry)
+            if local == hour_now:
+                current = entry
+
+    return {"current": current, "today": today, "tomorrow": later}
+
+
+# Consumption is stored hourly; coarser resolutions are summed from that rather
+# than asked of Tibber again.
+_RESOLUTION_HOURS = {"HOURLY": 1, "DAILY": 24, "MONTHLY": 24 * 31}
+
+
+def _stored_consumption(resolution: str, last: int) -> list[dict[str, Any]]:
+    """Stored consumption at the requested resolution. Blocking — worker thread."""
+    hours = min(_RESOLUTION_HOURS[resolution] * last, _MAX_STORED_HOURS)
+    flux = f"""
+from(bucket: "{config.influxdb.bucket}")
+  |> range(start: -{hours}h)
+  |> filter(fn: (r) => r._measurement == "tibber_consumption")
+  |> filter(fn: (r) => r._field == "consumption" or r._field == "cost" or r._field == "unitPrice")
+  |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+  |> sort(columns: ["_time"])
+"""
+    rows: list[dict[str, Any]] = []
+    for table in influx_store.query(flux):
+        for record in table.records:
+            ts = record.get_time()
+            if ts is None:
+                continue
+            values = record.values
+            rows.append({
+                "time": ts.astimezone(),
+                "consumption": values.get("consumption"),
+                "cost": values.get("cost"),
+                "unitPrice": values.get("unitPrice"),
+                "currency": values.get("currency"),
+            })
+    rows.sort(key=lambda r: r["time"])
+
+    if resolution == "HOURLY":
+        nodes = [
+            {
+                "from": r["time"].isoformat(),
+                "to": (r["time"] + timedelta(hours=1)).isoformat(),
+                "consumption": r["consumption"],
+                "cost": r["cost"],
+                "unitPrice": r["unitPrice"],
+                "currency": r["currency"],
+            }
+            for r in rows
+        ]
+        return nodes[-last:]
+
+    return _bucket_consumption(rows, resolution)[-last:]
+
+
+def _bucket_consumption(
+    rows: list[dict[str, Any]], resolution: str
+) -> list[dict[str, Any]]:
+    """Sum hourly rows into days or months.
+
+    Consumption and cost add up; the unit price is averaged, weighted by the
+    consumption it applied to, so an hour with barely any usage cannot pull the
+    average around.
+    """
+    buckets: dict[datetime, dict[str, Any]] = {}
+    for r in rows:
+        t = r["time"]
+        key = (
+            t.replace(hour=0, minute=0, second=0, microsecond=0)
+            if resolution == "DAILY"
+            else t.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        )
+        bucket = buckets.setdefault(
+            key,
+            {"consumption": 0.0, "cost": 0.0, "price_sum": 0.0, "currency": None},
+        )
+        kwh = r["consumption"] or 0.0
+        bucket["consumption"] += kwh
+        bucket["cost"] += r["cost"] or 0.0
+        bucket["price_sum"] += (r["unitPrice"] or 0.0) * kwh
+        bucket["currency"] = bucket["currency"] or r["currency"]
+
+    nodes = []
+    for key in sorted(buckets):
+        b = buckets[key]
+        span = timedelta(days=1) if resolution == "DAILY" else timedelta(days=31)
+        kwh = b["consumption"]
+        nodes.append({
+            "from": key.isoformat(),
+            "to": (key + span).isoformat(),
+            "consumption": kwh,
+            "cost": b["cost"],
+            "unitPrice": (b["price_sum"] / kwh) if kwh else None,
+            "currency": b["currency"],
+        })
+    return nodes
 
 
 _cache: dict[str, tuple[float, Any]] = {}
@@ -239,8 +391,8 @@ async def energy_status() -> dict[str, Any]:
     }
 
 
-@router.get("/prices")
-async def get_prices() -> dict[str, Any]:
+async def _live_prices() -> dict[str, Any]:
+    """Fetch prices straight from Tibber. Used only when nothing is stored yet."""
     token = _require_token()
     home_id = get_setting("tibber_home_id") or ""
     query = """{{ viewer {{ home(id: "{home_id}") {{
@@ -262,13 +414,31 @@ async def get_prices() -> dict[str, Any]:
     }
 
 
-@router.get("/consumption")
-async def get_consumption(
-    resolution: str = Query("HOURLY"),
-    last: int = Query(24),
-) -> list[dict[str, Any]]:
-    if resolution not in _VALID_RESOLUTIONS:
-        raise HTTPException(422, f"Invalid resolution '{resolution}'.")
+@router.get("/prices")
+async def get_prices() -> dict[str, Any]:
+    """Today's and tomorrow's prices, served from InfluxDB.
+
+    The hourly poller already stores these. Proxying every dashboard load
+    straight through to Tibber instead spent the token's rate limit (about 100
+    requests per five minutes) on data we had on disk — a couple of open tabs
+    was enough to start tripping it.
+    """
+    try:
+        stored = await _cached("prices", _PRICES_TTL, _stored_prices)
+    except Exception as exc:
+        logger.warning("Stored price lookup failed (%s) — asking Tibber", exc)
+        stored = None
+
+    if stored and (stored["today"] or stored["tomorrow"]):
+        return stored
+
+    # Nothing stored yet: a fresh install before the first poll, or an InfluxDB
+    # that is not answering.
+    return await _live_prices()
+
+
+async def _live_consumption(resolution: str, last: int) -> list[dict[str, Any]]:
+    """Fetch consumption from Tibber. Used only when nothing is stored yet."""
     token = _require_token()
     home_id = get_setting("tibber_home_id") or ""
     query = """{{ viewer {{ home(id: "{home_id}") {{
@@ -282,6 +452,37 @@ async def get_consumption(
         raise HTTPException(502, {"error": "tibber_api_error", "detail": str(exc)})
     nodes = data["viewer"]["home"]["consumption"]["nodes"]
     return [n for n in nodes if n]
+
+
+@router.get("/consumption")
+async def get_consumption(
+    resolution: str = Query("HOURLY"),
+    last: int = Query(24, ge=1, le=_MAX_STORED_HOURS),
+) -> list[dict[str, Any]]:
+    """Consumption history, served from InfluxDB.
+
+    The hourly poller stores 720 hours of it; daily and monthly figures are
+    summed from those rather than asked of Tibber again.
+    """
+    if resolution not in _VALID_RESOLUTIONS:
+        raise HTTPException(422, f"Invalid resolution '{resolution}'.")
+
+    try:
+        nodes = await _cached(
+            f"consumption:{resolution}:{last}",
+            _CONSUMPTION_TTL,
+            _stored_consumption,
+            resolution,
+            last,
+        )
+    except Exception as exc:
+        logger.warning("Stored consumption lookup failed (%s) — asking Tibber", exc)
+        nodes = None
+
+    if nodes:
+        return nodes
+
+    return await _live_consumption(resolution, last)
 
 
 @router.get("/history/power")

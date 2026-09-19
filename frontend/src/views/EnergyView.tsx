@@ -16,6 +16,7 @@ import {
 } from "recharts";
 import {
   getEnergyConsumption,
+  getEnergyHistoryCost,
   getEnergyHistoryPhases,
   getEnergyHistoryPower,
   getEnergyHomes,
@@ -25,6 +26,7 @@ import {
 } from "../api/client";
 import type {
   ConsumptionNode,
+  CostPoint,
   EnergyStatus,
   PhasePoint,
   PowerPoint,
@@ -558,6 +560,86 @@ function PowerHistoryPanel({ enabled }: { enabled: boolean }) {
 }
 
 // ---------------------------------------------------------------------------
+// CostHistoryPanel
+// ---------------------------------------------------------------------------
+
+function CostHistoryPanel({ enabled }: { enabled: boolean }) {
+  const [range, setRange] = useState<HistoryRange>("24h");
+  const { lightMode, use24h } = useUISettings();
+
+  const { data: costHistory = [], isLoading } = useQuery({
+    queryKey: ["energy-cost", range],
+    queryFn: () => getEnergyHistoryCost(range),
+    staleTime: 30_000,
+    enabled,
+  });
+
+  const gridColor = lightMode ? "rgba(0,0,0,0.07)" : "rgba(255,255,255,0.06)";
+  const axisColor = lightMode ? "rgba(0,0,0,0.45)" : "rgba(255,255,255,0.3)";
+  const tooltipStyle = lightMode
+    ? { backgroundColor: "#ffffff", border: "1px solid #e2e8f0", borderRadius: 8, color: "#0f172a", fontSize: 12 }
+    : { backgroundColor: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#f8fafc", fontSize: 12 };
+
+  return (
+    <CollapsiblePanel
+      title="Accumulated cost"
+      storageKey="energy-open-cost"
+      right={<RangeSelector value={range} onChange={setRange} />}
+    >
+      {/* Tibber resets this at midnight, so a multi-day range is a row of daily
+          climbs rather than one continuous line. */}
+      <p className="text-xs text-slate-400 dark:text-slate-500">
+        Cost so far today — resets at midnight.
+      </p>
+      {isLoading ? (
+        <div className="flex h-[200px] items-center justify-center">
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-electric-blue border-t-transparent" />
+        </div>
+      ) : costHistory.length === 0 ? (
+        <div className="flex h-[200px] items-center justify-center">
+          <p className="text-sm text-slate-400 dark:text-slate-500">No data for this period.</p>
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={200}>
+          <LineChart data={costHistory as CostPoint[]} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+            <CartesianGrid stroke={gridColor} strokeDasharray="3 3" />
+            <XAxis
+              dataKey="time"
+              tickFormatter={(v) => formatTime(v as string, range, use24h)}
+              tick={{ fill: axisColor, fontSize: 11 }}
+              axisLine={{ stroke: gridColor }}
+              tickLine={false}
+              interval="preserveStartEnd"
+            />
+            <YAxis
+              tick={{ fill: axisColor, fontSize: 11 }}
+              axisLine={{ stroke: gridColor }}
+              tickLine={false}
+              unit=" kr"
+              width={56}
+              domain={["auto", "auto"]}
+            />
+            <Tooltip
+              contentStyle={tooltipStyle}
+              labelFormatter={(v) => formatTime(v as string, range, use24h)}
+              formatter={(value: number) => [`kr ${value.toFixed(2)}`, "Cost"]}
+            />
+            <Line
+              type="monotone"
+              dataKey="accumulatedCost"
+              stroke="#fbbf24"
+              strokeWidth={2}
+              dot={false}
+              activeDot={{ r: 4, fill: "#fbbf24" }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+    </CollapsiblePanel>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // PhaseHistoryPanel
 // ---------------------------------------------------------------------------
 
@@ -735,6 +817,7 @@ export default function EnergyView() {
       <StatusBar status={status} />
       {prices && <PriceChartSection prices={prices} />}
       <PowerHistoryPanel enabled={status.configured} />
+      <CostHistoryPanel enabled={status.configured} />
       <PhaseHistoryPanel type="current" title="Current" enabled={status.configured} />
       <PhaseHistoryPanel type="voltage" title="Voltage" enabled={status.configured} />
     </div>

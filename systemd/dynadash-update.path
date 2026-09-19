@@ -1,0 +1,15 @@
+# Template rendered by install.sh and update.sh — @PLACEHOLDERS@ are substituted
+# there. Edit this file, not the generated unit in /etc/systemd/system.
+#
+# Watches for the request file the unprivileged backend drops when someone asks
+# the dashboard to check for or apply an update. This is what replaces giving the
+# backend sudo, and it is why the backend can run under NoNewPrivileges.
+[Unit]
+Description=Watch for DynaDash update requests
+
+[Path]
+PathExists=@BACKEND_DIR@/data/update-request
+Unit=dynadash-update.service
+
+[Install]
+WantedBy=multi-user.target

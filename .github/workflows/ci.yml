@@ -84,22 +84,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Render and verify the unit template
+      - name: Render and verify the unit templates
         run: |
-          sed -e 's|@BACKEND_DIR@|/opt/dynadash/backend|g' \
-              -e 's|@SERVICE_USER@|dynadash|g' \
-              systemd/dynadash-backend.service.in > /tmp/dynadash-backend.service
-          # ExecStart points into a venv that does not exist here, so only
+          render() {
+            sed -e 's|@APP_DIR@|/opt/dynadash|g' \
+                -e 's|@BACKEND_DIR@|/opt/dynadash/backend|g' \
+                -e 's|@SERVICE_USER@|dynadash|g' "systemd/$1" > "/tmp/$2"
+          }
+          render dynadash-backend.service.in dynadash-backend.service
+          render dynadash-update.service     dynadash-update.service
+          render dynadash-update.path        dynadash-update.path
+
+          # ExecStart points into a checkout that does not exist here, so only
           # directive errors matter; those are what this catches.
-          output="$(systemd-analyze verify /tmp/dynadash-backend.service 2>&1 || true)"
-          echo "$output"
-          if echo "$output" | grep -vF 'is not executable' | grep -qiE 'unknown|invalid|failed'; then
-            echo "::error::systemd unit has directive errors"
+          for unit in dynadash-backend.service dynadash-update.service dynadash-update.path; do
+            echo "--- $unit"
+            output="$(systemd-analyze verify "/tmp/$unit" 2>&1 || true)"
+            echo "$output"
+            if echo "$output" | grep -vF 'is not executable' \
+                              | grep -vF 'does not exist' \
+                              | grep -qiE 'unknown|invalid|failed'; then
+              echo "::error::$unit has directive errors"
+              exit 1
+            fi
+          done
+
+      - name: The backend must not be able to gain privileges
+        run: |
+          # The whole point of routing updates through the path unit is that this
+          # can stay on; a regression here would silently widen the sandbox.
+          grep -q '^NoNewPrivileges=yes$' systemd/dynadash-backend.service.in
+          grep -q '^CapabilityBoundingSet=$' systemd/dynadash-backend.service.in
+          grep -q '^ProtectSystem=strict$' systemd/dynadash-backend.service.in
+          # Matches sudo as a command, not the comments explaining its absence.
+          if grep -rnE "['\"]sudo['\"]" backend/ --include='*.py'; then
+            echo "::error::the backend should no longer shell out to sudo"
             exit 1
           fi
-
-      - name: Check the sudoers grant is well-formed
-        run: |
-          printf 'dynadash ALL=(root) NOPASSWD: /opt/dynadash/scripts/dynadash-admin fetch\n' \
-            > /tmp/sudoers-dynadash
-          sudo visudo -c -q -f /tmp/sudoers-dynadash
+          if grep -rn 'subprocess' backend/routers/update.py; then
+            echo "::error::the updater should go through the path unit, not spawn processes"
+            exit 1
+          fi

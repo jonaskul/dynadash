@@ -185,10 +185,10 @@ ok "nginx configured and reloaded"
 info "Creating the unprivileged service account…"
 provision_user
 provision_permissions
-provision_sudoers
+provision_remove_sudoers
 ok "Backend will run as '${SERVICE_USER}' (not root)"
 
-info "Installing systemd service…"
+info "Installing systemd units…"
 provision_service_unit
 systemctl enable dynadash-backend --quiet
 systemctl restart dynadash-backend

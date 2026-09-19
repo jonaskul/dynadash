@@ -3,6 +3,7 @@ import type {
   AreaState,
   AuthStatus,
   ConsumptionNode,
+  CostPoint,
   EnergyStatus,
   GatewayConfig,
   GatewayConfigOut,
@@ -267,6 +268,10 @@ export async function getEnergyConsumption(
 
 export async function getEnergyHistoryPower(range: string): Promise<PowerPoint[]> {
   return request<PowerPoint[]>("GET", `/energy/history/power?range=${range}`);
+}
+
+export async function getEnergyHistoryCost(range: string): Promise<CostPoint[]> {
+  return request<CostPoint[]>("GET", `/energy/history/cost?range=${range}`);
 }
 
 export async function getEnergyHistoryPhases(range: string): Promise<PhasePoint[]> {

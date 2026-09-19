@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Privileged helper for the DynaDash self-update flow.
 #
-# The backend runs as an unprivileged user and therefore cannot touch git or
-# systemd itself. It reaches exactly the three actions below through sudo, each
-# listed verbatim (no wildcards) in /etc/sudoers.d/dynadash — so a compromised
-# backend can run these and nothing else.
+# The backend runs unprivileged and cannot use git or systemd itself. Rather than
+# giving it sudo — which is setuid, and therefore rules out NoNewPrivileges on
+# the service — it drops a request file in its data directory. A systemd path
+# unit notices the file and starts dynadash-update.service, which runs
+# `handle-request` here as root. The backend never executes anything privileged;
+# it only asks, and the two things it can ask for are fixed below.
 #
 # SECURITY: this file must stay owned by root and must not be writable by the
 # backend user. If the backend can edit it, it can run anything as root.
@@ -12,10 +14,14 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DATA_DIR="${APP_DIR}/backend/data"
+REQUEST_FILE="${DATA_DIR}/update-request"
+STATUS_FILE="${DATA_DIR}/update-status.json"
+
 cd "${APP_DIR}"
 
-# Track whatever branch the checkout is actually on, so a deployment following
-# a different branch still updates from the right place.
+# Track whatever branch the checkout is on, so a deployment following a
+# different branch still updates from the right place.
 branch() {
   local b
   b="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
@@ -23,37 +29,114 @@ branch() {
   printf '%s' "${b}"
 }
 
-case "${1:-}" in
-  fetch)
-    git fetch origin "$(branch)" --depth=50
-    ;;
+do_fetch() {
+  git fetch origin "$(branch)" --depth=50
+}
 
-  revs)
-    current="$(git rev-parse HEAD)"
-    echo "current ${current}"
-    # FETCH_HEAD only exists once a fetch has run; report the current revision
-    # as the latest rather than failing, so the caller sees "up to date".
-    if latest="$(git rev-parse FETCH_HEAD 2>/dev/null)"; then
-      echo "latest ${latest}"
-      if [[ "${current}" != "${latest}" ]]; then
-        git log "${current}..FETCH_HEAD" --pretty=format:'commit %H|%s|%as' || true
-        echo
-      fi
-    else
-      echo "latest ${current}"
+do_revs() {
+  local current latest
+  current="$(git rev-parse HEAD)"
+  echo "current ${current}"
+  # FETCH_HEAD only exists once a fetch has run; report the current revision as
+  # the latest rather than failing, so the caller sees "up to date".
+  if latest="$(git rev-parse FETCH_HEAD 2>/dev/null)"; then
+    echo "latest ${latest}"
+    if [[ "${current}" != "${latest}" ]]; then
+      git log "${current}..FETCH_HEAD" --pretty=format:'commit %H|%s|%as' || true
+      echo
     fi
-    ;;
+  else
+    echo "latest ${current}"
+  fi
+}
 
-  apply)
-    # systemd-run puts the update in its own transient unit so it survives
-    # update.sh restarting dynadash-backend, which would otherwise kill it as
-    # part of the service's cgroup teardown.
-    systemd-run --no-block --unit=dynadash-gui-update \
-      bash -c "cd '${APP_DIR}' && git reset --hard FETCH_HEAD && bash '${APP_DIR}/update.sh' --skip-pull --force"
-    ;;
+do_apply() {
+  # A transient unit of its own, so the update survives update.sh restarting
+  # dynadash-update.service and dynadash-backend along with it.
+  systemd-run --no-block --unit=dynadash-gui-update \
+    bash -c "cd '${APP_DIR}' && git reset --hard FETCH_HEAD && bash '${APP_DIR}/update.sh' --skip-pull --force"
+}
 
+# Write the outcome where the backend can read it. Composed by python3 so that
+# quotes and newlines in command output cannot break the JSON.
+write_status() {
+  local nonce="$1" action="$2" ok="$3" output_file="$4"
+  local tmp
+  tmp="$(mktemp "${STATUS_FILE}.XXXXXX")"
+  python3 - "$nonce" "$action" "$ok" "$output_file" > "${tmp}" <<'PY'
+import json, sys, datetime
+nonce, action, ok, output_file = sys.argv[1:5]
+with open(output_file, errors="replace") as f:
+    output = f.read()[-8000:]
+json.dump({
+    "nonce": nonce,
+    "action": action,
+    "ok": ok == "true",
+    "output": output,
+    "finished_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+}, sys.stdout)
+PY
+  chmod 644 "${tmp}"
+  mv -f "${tmp}" "${STATUS_FILE}"
+}
+
+handle_request() {
+  [[ -f "${REQUEST_FILE}" ]] || exit 0
+
+  # Claim the request before acting on it, so the path unit re-firing cannot run
+  # the same request twice.
+  local claimed
+  claimed="$(mktemp "${REQUEST_FILE}.claimed.XXXXXX")"
+  mv -f "${REQUEST_FILE}" "${claimed}"
+
+  local nonce action
+  read -r nonce action < "${claimed}" || true
+  rm -f "${claimed}"
+
+  local out
+  out="$(mktemp)"
+  # shellcheck disable=SC2064
+  trap "rm -f '${out}'" EXIT
+
+  # The request comes from a less-privileged process, so neither field is
+  # trusted: the nonce is only ever echoed back, and the action has to be one of
+  # exactly two words.
+  if [[ ! "${nonce}" =~ ^[0-9a-f]{16,64}$ ]]; then
+    echo "malformed request nonce" > "${out}"
+    write_status "invalid" "unknown" false "${out}"
+    exit 0
+  fi
+
+  case "${action}" in
+    check)
+      if do_fetch > "${out}" 2>&1 && do_revs >> "${out}" 2>&1; then
+        write_status "${nonce}" check true "${out}"
+      else
+        write_status "${nonce}" check false "${out}"
+      fi
+      ;;
+    apply)
+      if do_apply > "${out}" 2>&1; then
+        write_status "${nonce}" apply true "${out}"
+      else
+        write_status "${nonce}" apply false "${out}"
+      fi
+      ;;
+    *)
+      echo "unknown action: ${action}" > "${out}"
+      write_status "${nonce}" "unknown" false "${out}"
+      ;;
+  esac
+}
+
+case "${1:-}" in
+  handle-request) handle_request ;;
+  # Kept for running an update by hand over SSH.
+  fetch)          do_fetch ;;
+  revs)           do_revs ;;
+  apply)          do_apply ;;
   *)
-    echo "usage: $(basename "$0") {fetch|revs|apply}" >&2
+    echo "usage: $(basename "$0") {handle-request|fetch|revs|apply}" >&2
     exit 64
     ;;
 esac

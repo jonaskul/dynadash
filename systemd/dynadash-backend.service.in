@@ -24,8 +24,11 @@ StandardError=journal
 SyslogIdentifier=dynadash-backend
 
 # --- Sandboxing -------------------------------------------------------------
-# The whole filesystem is read-only apart from the data directory, and the
-# service holds no capabilities.
+# The whole filesystem is read-only apart from the data directory, the service
+# holds no capabilities, and it cannot gain any. Privileged update steps go
+# through dynadash-update.path instead of anything setuid, which is what makes
+# NoNewPrivileges possible here.
+NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=@BACKEND_DIR@/data
 PrivateTmp=yes
@@ -41,11 +44,6 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 SystemCallArchitectures=native
 CapabilityBoundingSet=
 AmbientCapabilities=
-
-# NoNewPrivileges is deliberately NOT set: the GUI updater shells out to sudo,
-# which is setuid and cannot run under it. The privilege it can reach is limited
-# instead — scripts/dynadash-admin, root-owned and not writable by this user,
-# with its three actions listed verbatim in /etc/sudoers.d/dynadash.
 
 [Install]
 WantedBy=multi-user.target

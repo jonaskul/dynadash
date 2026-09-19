@@ -40,7 +40,10 @@ ProtectHostname=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# AF_NETLINK belongs here even though nothing opens a netlink socket directly:
+# glibc's getaddrinfo uses one to enumerate local interfaces, so leaving it out
+# can break DNS resolution — and with it the Tibber connection.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 SystemCallArchitectures=native
 CapabilityBoundingSet=
 AmbientCapabilities=

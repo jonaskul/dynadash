@@ -11,6 +11,7 @@ export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="${SCRIPT_DIR}"
 BACKEND_DIR="${SCRIPT_DIR}/backend"
 FRONTEND_DIR="${SCRIPT_DIR}/frontend"
 WWW_DIR="/var/www/dynadash"
@@ -33,6 +34,9 @@ ok()    { echo -e "  ${GREEN}✓${NC} $*"; }
 error() { echo -e "  ${RED}✗${NC} $*" >&2; exit 1; }
 
 [[ $EUID -ne 0 ]] && error "Run as root."
+
+# shellcheck source=scripts/lib-provision.sh
+source "${SCRIPT_DIR}/scripts/lib-provision.sh"
 
 # Log all output to file and stdout
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -68,7 +72,12 @@ if [[ "${SKIP_PULL}" == false ]]; then
     info "Updating $(git rev-parse --short HEAD) → $(git rev-parse --short FETCH_HEAD)…"
 
     if [[ -d "$DATA_DIR" ]]; then
-      cp -r "$DATA_DIR" "$DATA_BACKUP"
+      # Remove any leftover from an earlier run first, or the copy nests
+      # inside it instead of replacing it.
+      rm -rf "$DATA_BACKUP"
+      cp -a "$DATA_DIR" "$DATA_BACKUP"
+      # The backup holds the Tibber token, and /tmp is world-readable.
+      chmod 700 "$DATA_BACKUP"
       info "Data backed up to $DATA_BACKUP"
     fi
 
@@ -77,10 +86,13 @@ if [[ "${SKIP_PULL}" == false ]]; then
     ok "Code updated to $(git rev-parse --short HEAD)"
 
     # Restore execute bit (GitHub API pushes scripts as non-executable)
-    chmod +x "${SCRIPT_DIR}/update.sh" "${SCRIPT_DIR}/install.sh" "${SCRIPT_DIR}/run.sh" 2>/dev/null || true
+    chmod +x "${SCRIPT_DIR}/update.sh" "${SCRIPT_DIR}/install.sh" \
+             "${SCRIPT_DIR}/run.sh" "${SCRIPT_DIR}/scripts/dynadash-admin" \
+             2>/dev/null || true
 
     if [[ -d "$DATA_BACKUP" ]]; then
-      cp -r "${DATA_BACKUP}/." "$DATA_DIR/"
+      cp -a "${DATA_BACKUP}/." "$DATA_DIR/"
+      rm -rf "$DATA_BACKUP"
       info "Data restored"
     fi
   fi
@@ -144,33 +156,9 @@ fi
 # ---------------------------------------------------------------------------
 # 5. Regenerate systemd service (path may have changed or service may be new)
 # ---------------------------------------------------------------------------
-info "Updating systemd service…"
-cat > /etc/systemd/system/dynadash-backend.service <<UNIT
-[Unit]
-Description=DynaDash FastAPI Backend
-After=network.target influxdb.service
-Wants=influxdb.service
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=${BACKEND_DIR}
-ExecStart=${BACKEND_DIR}/.venv/bin/uvicorn main:app \\
-    --host 127.0.0.1 \\
-    --port 8000 \\
-    --log-level info
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=dynadash-backend
-ReadWritePaths=${BACKEND_DIR}/data
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-systemctl daemon-reload
-ok "systemd service updated"
+info "Updating service account, permissions and systemd unit…"
+provision_all
+ok "Running as '${SERVICE_USER}'; systemd unit updated"
 
 # ---------------------------------------------------------------------------
 # 6. Validate backend before restart

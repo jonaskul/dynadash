@@ -10,6 +10,7 @@ export LANG=C.UTF-8
 export LC_ALL=C.UTF-8
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="${SCRIPT_DIR}"
 BACKEND_DIR="${SCRIPT_DIR}/backend"
 FRONTEND_DIR="${SCRIPT_DIR}/frontend"
 WWW_DIR="/var/www/dynadash"
@@ -29,6 +30,9 @@ ok()    { echo -e "${GREEN}[DynaDash] ✓${NC} $*"; }
 error() { echo -e "${RED}[DynaDash] ✗${NC} $*" >&2; exit 1; }
 
 [[ $EUID -ne 0 ]] && error "This script must be run as root."
+
+# shellcheck source=scripts/lib-provision.sh
+source "${SCRIPT_DIR}/scripts/lib-provision.sh"
 
 # ---------------------------------------------------------------------------
 # 1. System packages (no nodejs here — installed via NodeSource below)
@@ -171,32 +175,14 @@ ok "nginx configured and reloaded"
 # ---------------------------------------------------------------------------
 # 10. Install and start systemd service
 # ---------------------------------------------------------------------------
+info "Creating the unprivileged service account…"
+provision_user
+provision_permissions
+provision_sudoers
+ok "Backend will run as '${SERVICE_USER}' (not root)"
+
 info "Installing systemd service…"
-cat > /etc/systemd/system/dynadash-backend.service <<UNIT
-[Unit]
-Description=DynaDash FastAPI Backend
-After=network.target influxdb.service
-Wants=influxdb.service
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=${BACKEND_DIR}
-ExecStart=${BACKEND_DIR}/.venv/bin/uvicorn main:app \\
-    --host 127.0.0.1 \\
-    --port 8000 \\
-    --log-level info
-Restart=always
-RestartSec=5
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=dynadash-backend
-ReadWritePaths=${BACKEND_DIR}/data
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-systemctl daemon-reload
+provision_service_unit
 systemctl enable dynadash-backend --quiet
 systemctl restart dynadash-backend
 sleep 2
@@ -217,7 +203,11 @@ echo -e "${GREEN}═════════════════════
 echo ""
 echo -e "  Dashboard URL:  ${CYAN}http://${LOCAL_IP}/${NC}"
 echo ""
-echo -e "  On first launch, you will be prompted to enter"
-echo -e "  your Dynalite gateway IP, username, and password."
-echo -e "  After saving, add your areas in the Area Manager."
+echo -e "  ${CYAN}Open the dashboard now and set a password${NC} — until you do,"
+echo -e "  the API rejects every request, and whoever reaches it first"
+echo -e "  gets to choose that password."
+echo ""
+echo -e "  After that you will be prompted to enter your Dynalite"
+echo -e "  gateway IP, username, and password, then add your areas"
+echo -e "  in the Area Manager."
 echo ""

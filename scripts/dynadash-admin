@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Privileged helper for the DynaDash self-update flow.
+#
+# The backend runs as an unprivileged user and therefore cannot touch git or
+# systemd itself. It reaches exactly the three actions below through sudo, each
+# listed verbatim (no wildcards) in /etc/sudoers.d/dynadash — so a compromised
+# backend can run these and nothing else.
+#
+# SECURITY: this file must stay owned by root and must not be writable by the
+# backend user. If the backend can edit it, it can run anything as root.
+
+set -euo pipefail
+
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${APP_DIR}"
+
+# Track whatever branch the checkout is actually on, so a deployment following
+# a different branch still updates from the right place.
+branch() {
+  local b
+  b="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+  [[ "${b}" == "HEAD" ]] && b="main"
+  printf '%s' "${b}"
+}
+
+case "${1:-}" in
+  fetch)
+    git fetch origin "$(branch)" --depth=50
+    ;;
+
+  revs)
+    current="$(git rev-parse HEAD)"
+    echo "current ${current}"
+    # FETCH_HEAD only exists once a fetch has run; report the current revision
+    # as the latest rather than failing, so the caller sees "up to date".
+    if latest="$(git rev-parse FETCH_HEAD 2>/dev/null)"; then
+      echo "latest ${latest}"
+      if [[ "${current}" != "${latest}" ]]; then
+        git log "${current}..FETCH_HEAD" --pretty=format:'commit %H|%s|%as' || true
+        echo
+      fi
+    else
+      echo "latest ${current}"
+    fi
+    ;;
+
+  apply)
+    # systemd-run puts the update in its own transient unit so it survives
+    # update.sh restarting dynadash-backend, which would otherwise kill it as
+    # part of the service's cgroup teardown.
+    systemd-run --no-block --unit=dynadash-gui-update \
+      bash -c "cd '${APP_DIR}' && git reset --hard FETCH_HEAD && bash '${APP_DIR}/update.sh' --skip-pull --force"
+    ;;
+
+  *)
+    echo "usage: $(basename "$0") {fetch|revs|apply}" >&2
+    exit 64
+    ;;
+esac

@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, CheckCircle2, Clock, Download, Loader2, Moon, RefreshCw, Sun, Trash2, Upload } from "lucide-react";
+import { ArrowDownToLine, CheckCircle2, Clock, Download, Loader2, LogOut, Moon, RefreshCw, Sun, Trash2, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { applyUpdate, checkUpdate, deleteGateway, getAppSettings, getGateway, importBackup, saveAppSettings, saveGateway, testGateway } from "../api/client";
+import { applyUpdate, changePassword, checkUpdate, deleteGateway, getAppSettings, getGateway, importBackup, logout, saveAppSettings, saveGateway, testGateway } from "../api/client";
 import type { UpdateStatus } from "../api/types";
 import { useUISettings } from "../context/UISettings";
 
@@ -309,6 +309,114 @@ function BackupSection() {
 }
 
 // ---------------------------------------------------------------------------
+// Security section
+// ---------------------------------------------------------------------------
+
+const MIN_PASSWORD_LENGTH = 10;
+
+function SecuritySection() {
+  const [current, setCurrent] = useState("");
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const tooShort = next.length > 0 && next.length < MIN_PASSWORD_LENGTH;
+  const mismatch = confirm.length > 0 && next !== confirm;
+  const canSave =
+    !saving &&
+    current.length > 0 &&
+    next.length >= MIN_PASSWORD_LENGTH &&
+    next === confirm;
+
+  async function handleChange() {
+    setSaving(true);
+    setMessage(null);
+    setError(null);
+    try {
+      await changePassword(current, next);
+      setCurrent("");
+      setNext("");
+      setConfirm("");
+      setMessage("Password changed. Other devices have been signed out.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSignOut() {
+    try {
+      await logout();
+    } finally {
+      // The gate notices the next 401 anyway; reloading just gets there now.
+      window.location.reload();
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-5 dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm">
+      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">Security</h2>
+
+      <div className="space-y-3">
+        <p className="text-xs text-slate-500">
+          Change the dashboard password. Every signed-in device is signed out,
+          which is how you revoke access from a device you no longer trust.
+        </p>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+            Current password
+          </label>
+          <input type="password" autoComplete="current-password" className={inputCls}
+            value={current} onChange={(e) => setCurrent(e.target.value)} placeholder="••••••••••" />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+            New password
+          </label>
+          <input type="password" autoComplete="new-password" className={inputCls}
+            value={next} onChange={(e) => setNext(e.target.value)} placeholder="••••••••••" />
+          <p className={`mt-1 text-xs ${tooShort ? "text-amber-600 dark:text-amber-400" : "text-slate-400 dark:text-slate-500"}`}>
+            At least {MIN_PASSWORD_LENGTH} characters.
+          </p>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-slate-500 dark:text-slate-400">
+            Repeat new password
+          </label>
+          <input type="password" autoComplete="new-password" className={inputCls}
+            value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="••••••••••" />
+          {mismatch && (
+            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+              The two passwords do not match.
+            </p>
+          )}
+        </div>
+
+        {message && <p className="text-xs text-green-600 dark:text-green-400">{message}</p>}
+        {error && <p className="text-xs text-red-500 dark:text-red-400">{error}</p>}
+
+        <button onClick={handleChange} disabled={!canSave}
+          className="flex items-center gap-2 rounded-lg bg-electric-blue px-4 py-2 text-sm font-semibold text-navy-900 hover:bg-electric-blue-light transition disabled:opacity-40">
+          {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+          Change password
+        </button>
+      </div>
+
+      <div className="border-t border-slate-100 dark:border-white/5" />
+
+      <button onClick={handleSignOut}
+        className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition dark:border-white/15 dark:bg-white/5 dark:text-slate-300 dark:hover:text-white dark:hover:bg-white/10">
+        <LogOut className="h-4 w-4" />
+        Sign out
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Software update section
 // ---------------------------------------------------------------------------
 
@@ -580,6 +688,9 @@ export default function SettingsView() {
 
       {/* Appearance */}
       <AppearanceSection />
+
+      {/* Security */}
+      <SecuritySection />
 
       {/* Gateway */}
       <div className="rounded-xl border border-slate-200 bg-white p-6 space-y-5 dark:border-white/10 dark:bg-navy-800/60 dark:backdrop-blur-sm">

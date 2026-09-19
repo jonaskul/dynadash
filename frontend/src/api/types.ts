@@ -160,3 +160,14 @@ export interface UpdateStatus {
   latest_sha: string;
   commits: UpdateCommit[];
 }
+
+// ---------------------------------------------------------------------------
+// Authentication
+// ---------------------------------------------------------------------------
+
+export interface AuthStatus {
+  /** False until a dashboard password has been created. */
+  configured: boolean;
+  /** Whether this browser holds a valid session. */
+  authenticated: boolean;
+}

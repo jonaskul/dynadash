@@ -5,12 +5,15 @@ import logging
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
+import auth
 import influx_store
 from poller import poller
 from routers import areas, backup, config_areas, gateway, history, settings, update
+from routers import auth as auth_router
 from tibber import router as tibber_router
 from tibber_db import get_setting, init_db
 from tibber_pulse import pulse_manager, rest_poller
@@ -19,6 +22,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 WATCHDOG_INTERVAL = 60
+
+# The only API paths reachable without a session. Everything else under /api/ is
+# guarded, so a router added later is protected by default rather than by
+# somebody remembering to guard it.
+OPEN_PATHS = frozenset({
+    "/api/health",
+    "/api/auth/status",
+    "/api/auth/login",
+    "/api/auth/setup",
+})
 
 
 async def _watchdog() -> None:
@@ -40,6 +53,7 @@ async def _watchdog() -> None:
             poller.ensure_running()
             pulse_manager.ensure_running()
             rest_poller.ensure_running()
+            auth.purge_expired()
         except asyncio.CancelledError:
             raise
         except BaseException:
@@ -50,6 +64,7 @@ async def _watchdog() -> None:
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("DynaDash backend starting — launching poller")
     init_db()
+    auth.init()
     await influx_store.start()
     await poller.start()
     token = get_setting("tibber_token")
@@ -75,15 +90,49 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Allow all origins — this runs on a private LAN with no external exposure.
+# Limited to localhost and private ranges. A wildcard cannot be combined with
+# credentials — browsers reject that pairing — and the session cookie needs
+# credentials to work at all.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=(
+        r"^https?://("
+        r"localhost|127\.0\.0\.1|\[::1\]|"
+        r"10\.[\d.]+|"
+        r"192\.168\.[\d.]+|"
+        r"172\.(1[6-9]|2\d|3[01])\.[\d.]+|"
+        r"[\w-]+\.local"
+        r")(:\d+)?$"
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def require_session(request: Request, call_next):
+    """Refuse any API request that does not carry a valid session."""
+    path = request.url.path
+    if (
+        request.method == "OPTIONS"
+        or not path.startswith("/api/")
+        or path in OPEN_PATHS
+    ):
+        return await call_next(request)
+
+    if not auth.is_configured():
+        # Nothing to check against yet. The browser shows the create-password
+        # screen, and only /api/auth/setup will get through until it is done.
+        return JSONResponse({"detail": "setup_required"}, status_code=401)
+
+    if not auth.validate_session(request.cookies.get(auth.COOKIE_NAME)):
+        return JSONResponse({"detail": "unauthorized"}, status_code=401)
+
+    return await call_next(request)
+
+
+app.include_router(auth_router.router)
 app.include_router(gateway.router)
 app.include_router(areas.router)
 app.include_router(config_areas.router)

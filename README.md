@@ -52,7 +52,13 @@ Advanced settings (CT ID, RAM, disk, CPU, static IP) can be configured when prom
 
 ## First-launch setup
 
-1. Open the dashboard URL — you land directly on the **Control** view.
+1. Open the dashboard URL. The first screen asks you to **choose a dashboard
+   password** (at least 10 characters), shared by everyone in the household.
+
+   Do this straight after installing: until a password exists the API refuses
+   every request, and whoever reaches the dashboard first is the one who gets to
+   set it. You can change it later under **Settings → Security**, which also
+   signs out every other device.
 2. Go to **Settings → Gateway Configuration** and enter your gateway IP address.
    - Enable **Use HTTPS** if your gateway requires it.
    - Enable **Ignore certificate errors** for self-signed certificates.
@@ -148,6 +154,28 @@ Data files in `backend/data/` (not in source control):
 
 ---
 
-## Security note
+## Security
 
-DynaDash is designed for private LAN use. CORS is open (`*`) and there is no dashboard authentication. Do not expose port 80 to the internet.
+DynaDash is designed for private LAN use. It is **not** hardened for exposure to
+the internet — traffic is plain HTTP, so the password and session cookie travel
+unencrypted. Do not forward port 80.
+
+What is in place:
+
+- **Dashboard password.** Every `/api/` route except `/api/health` and the login
+  endpoints requires a session. The password is stored as an scrypt hash;
+  sessions are held as hashes too, expire after 30 days, and survive a restart so
+  an update does not sign everyone out. Repeated failed logins lock that address
+  out for five minutes.
+- **The backend does not run as root.** It runs as the system user `dynadash`,
+  under a systemd sandbox where the whole filesystem is read-only apart from
+  `backend/data`, and with no capabilities.
+- **Narrow privilege for the updater.** The GUI updater needs git and systemd, so
+  the backend may run `scripts/dynadash-admin` — root-owned, not writable by the
+  service user — through sudo, with its three actions (`fetch`, `revs`, `apply`)
+  listed verbatim in `/etc/sudoers.d/dynadash`. Nothing else is permitted.
+- **CORS** is restricted to localhost and private address ranges.
+
+Worth knowing: the update flow deploys whatever `main` currently holds, so
+control of the GitHub repository means control of this machine. That is inherent
+to a self-updating deployment, not something the sandbox can contain.
